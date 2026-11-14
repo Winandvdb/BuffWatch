@@ -72,6 +72,8 @@ ns.MANA_CLASSES = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, PA
 --               (checked after exact names, for buffs whose name isn't known)
 --   nameSets + setsByClass - instead of names: named lists, picked per class
 --   combatOnly - only shown as missing while you're in combat
+--   minDuration - a matching buff whose full duration is shorter (seconds)
+--               doesn't count (e.g. the eating buff before Well Fed)
 --   warn      - false: show the bar, but no low / worn-off warnings
 --               (the warning time is never more than a quarter of the
 --               buff's full duration, so short buffs don't warn at once)
@@ -107,6 +109,7 @@ ns.CATEGORIES = {
     { key = "food", label = "Food (Well Fed)", mode = "leveling_instances",
       icon = "Interface\\Icons\\Spell_Misc_Food",
       tip = "Any Well Fed style food buff.",
+      minDuration = 120, -- (the short buff while you're still eating doesn't count: only the real one)
       names = { "Well Fed", "Increased Agility", "Increased Intellect", "Increased Stamina",
                 "Increased Strength", "Increased Spirit" },
       ids = { 18194 } }, -- Nightfin Soup ("Mana Regeneration", same name as Mageblood)

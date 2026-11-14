@@ -16,6 +16,10 @@ that is missing or running low, in the game's own modern HUD style.
 
 After you die, one warning lists everything you lost: "Lost on death: Find Minerals, Well Fed, Fortitude".
 
+During a fight, "running out" and "worn off" warnings wait; when combat ends you get one warning with what still
+matters ("After combat: Well Fed has worn off, Blessing of Might: 1:30 left"). WoW Forever hides your buffs from
+addons in combat: BuffWatch keeps what it saw before the fight and never reports a buff missing that it can't see.
+
 ## Install
 Copy the `BuffWatch` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.
 Rogues: disable PoisonWatch, BuffWatch leaves poisons to it while it's enabled.

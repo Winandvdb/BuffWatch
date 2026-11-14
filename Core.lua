@@ -15,6 +15,7 @@ ns.DEFAULTS = {
     raidWarning    = true,  -- big center-screen text
     chat           = true,
     combatCheck    = true,  -- entering combat: warn about missing weapon enchants (and buffs in instances)
+    quietInCombat  = true,  -- hold "running out" / "worn off" warnings until the fight ends
     instanceCheck  = true,  -- entering a dungeon/raid: list what's missing
     readyCheck     = true,  -- ready check: list what's missing or low
     showMissing    = true,  -- show a bar for buffs that are missing
@@ -427,14 +428,23 @@ local function ScanAuras(now)
     if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return found, false end
     if bagSnapshot and ns.bagUsedAt and now - ns.bagUsedAt > 600 then bagSnapshot = nil end
     local candidates
+    local seenAny = false
     for i = 1, 40 do
         local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
-        if not ok or type(a) ~= "table" then break end
+        if not ok then complete = false break end -- (a read that fails is not "no more buffs")
+        if type(a) ~= "table" then break end
+        seenAny = true
         local name = Readable(a.name) and type(a.name) == "string" and a.name or nil
         local id = Num(a.spellId)
         if not name and not id then complete = false end
         local key = KeyFor(name, id)
-        if key and state[key] and not (ns.CATEGORY_BY_KEY[key] or {}).weapon then
+        local kcat = key and ns.CATEGORY_BY_KEY[key]
+        if kcat and kcat.minDuration then
+            -- too short to be the real thing (the eating buff before Well Fed): skip it
+            local d = Num(a.duration)
+            if d and d > 0 and d < kcat.minDuration then key, kcat = nil, nil end
+        end
+        if key and state[key] and not (kcat or {}).weapon then
             -- remember the ID of a name match, so it still counts if only the ID is readable
             if id and name and not idToCat[id] then g.learned[id] = key end
             local exp, dur = Num(a.expirationTime), Num(a.duration)
@@ -454,6 +464,39 @@ local function ScanAuras(now)
             if dur and (dur == 0 or dur >= 300) and not fromOther then
                 candidates = candidates or {}
                 candidates[#candidates + 1] = name
+            end
+        end
+    end
+    -- In combat the game can hide your buffs from addons entirely: an empty list
+    -- then means "can't see", not "no buffs". (Out of combat it's believed.)
+    if not seenAny and InCombatLockdown() then complete = false end
+    -- A second look by name, as HealKit does (C_UnitAuras.GetAuraDataBySpellName):
+    -- a tracked buff the walk over your buff list didn't return still counts.
+    if C_UnitAuras.GetAuraDataBySpellName then
+        for _, cat in ipairs(ns.CATEGORIES) do
+            if tracked[cat.key] and not cat.weapon and not found[cat.key] then
+                local names = {}
+                for _, n in ipairs(ns.CategoryNames(cat, playerClass)) do
+                    if ns.NameOn(cat, n) then names[#names + 1] = n end
+                end
+                for v in pairs(g.extra[cat.key] or {}) do
+                    if type(v) == "string" then names[#names + 1] = v end
+                end
+                for _, n in ipairs(names) do
+                    local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", n, "HELPFUL")
+                    local d = ok and type(a) == "table" and Num(a.duration)
+                    if d and d > 0 and cat.minDuration and d < cat.minDuration then a = nil end -- (too short)
+                    if ok and type(a) == "table" then
+                        local exp, dur = Num(a.expirationTime), Num(a.duration)
+                        local rem
+                        if exp then rem = (exp == 0) and math.huge or (exp - now) end
+                        found[cat.key] = { rem = rem, exp = exp, dur = dur, name = n,
+                                           icon = Readable(a.icon) and a.icon or nil, stacks = Num(a.applications) }
+                        ns.byNameOnly = ns.byNameOnly or {}
+                        ns.byNameOnly[n] = true -- (for /bwatch status: buffs the list walk missed)
+                        break
+                    end
+                end
             end
         end
     end
@@ -520,6 +563,9 @@ end
 
 local function UpdateBuffState(now)
     local found, complete = ScanAuras(now)
+    -- blind: the game hid (some of) your buffs this time (combat). Buffs seen
+    -- before stay up until their known end; nothing new is reported missing.
+    ns.blind = not complete
     AddTracking(found)
     for _, cat in ipairs(ns.CATEGORIES) do
         if not cat.weapon then
@@ -578,17 +624,44 @@ local function WarnSecFor(s, warnSec)
     return warnSec
 end
 
+-- Warnings held back during combat (option "Hold warnings during combat"):
+-- { kind = "low" / "off" / "charges", key = group key or weapon = slot info, name }
+local held = {}
+
+local function HoldingWarnings()
+    return db.quietInCombat and InCombatLockdown()
+end
+
+local function Hold(item)
+    for _, h in ipairs(held) do
+        if h.name == item.name and h.key == item.key and h.weapon == item.weapon then
+            h.kind = item.kind -- (the latest news for that buff wins)
+            return
+        end
+    end
+    held[#held + 1] = item
+end
+
 local function CheckBuffWarnings(cat, s, rem, on, warnSec, now)
     warnSec = WarnSecFor(s, warnSec)
     local quiet = not on or cat.warn == false or now < ns.quietUntil or IsDead()
+    local name = s.name or cat.label
     if s.has then
         if not s.had or (s.lastRem and rem and rem > s.lastRem + 5) then s.warnedLow = false end
         if not quiet and not s.warnedLow and rem and rem > 0 and rem <= warnSec then
             s.warnedLow = true
-            ns.Warn(string.format("%s: %s left!", s.name or cat.label, FormatTime(rem)))
+            if HoldingWarnings() then
+                Hold({ kind = "low", key = cat.key, name = name })
+            else
+                ns.Warn(string.format("%s: %s left!", name, FormatTime(rem)))
+            end
         end
     elseif s.had and not quiet then
-        ns.Warn(string.format("%s has worn off!", s.name or cat.label))
+        if HoldingWarnings() then
+            Hold({ kind = "off", key = cat.key, name = name })
+        else
+            ns.Warn(string.format("%s has worn off!", name))
+        end
     end
     s.had = s.has
     s.lastRem = rem
@@ -624,22 +697,73 @@ local function CheckWeaponWarnings(info, s, d, on, warnSec, now)
 
         if not quiet and not s.warnedTime and d.remaining > 0 and d.remaining <= warnSec then
             s.warnedTime = true
-            ns.Warn(string.format("%s: %s left!", WeaponLabel(info), FormatTime(d.remaining)))
+            if HoldingWarnings() then
+                Hold({ kind = "low", weapon = info, name = WeaponLabel(info) })
+            else
+                ns.Warn(string.format("%s: %s left!", WeaponLabel(info), FormatTime(d.remaining)))
+            end
         end
         if not quiet and not s.warnedCharges and d.charges > 0 and d.charges < db.chargeWarn then
             s.warnedCharges = true
-            ns.Warn(string.format("%s: only %d charges left!", WeaponLabel(info), d.charges))
+            if HoldingWarnings() then
+                Hold({ kind = "charges", weapon = info, name = WeaponLabel(info) })
+            else
+                ns.Warn(string.format("%s: only %d charges left!", WeaponLabel(info), d.charges))
+            end
         end
     elseif not quiet and s.had and s.itemID == itemID and itemID
         and ((s.lastRemaining or 0) < 5 or (s.lastCharges or 0) <= 1) then
         -- same weapon, enchant was about to end and is now gone
-        ns.Warn(string.format("%s has worn off!", WeaponLabel(info)))
+        if HoldingWarnings() then
+            Hold({ kind = "off", weapon = info, name = WeaponLabel(info) })
+        else
+            ns.Warn(string.format("%s has worn off!", WeaponLabel(info)))
+        end
     end
 
     s.had = d.has
     s.itemID = itemID
     s.lastRemaining = d.has and d.remaining or nil
     s.lastCharges = d.has and d.charges or nil
+end
+
+-- After combat: one warning with what was held back, as it stands now. A buff
+-- you refreshed during the fight is left out; one that ran out says so.
+local function ReleaseHeld()
+    if #held == 0 then return end
+    local items = held
+    held = {}
+    if IsDead() then return end -- (died in the fight: "Lost on death" covers it)
+    local now = GetTime()
+    UpdateBuffState(now)
+    local warnSec = db.warnMin * 60
+    local parts = {}
+    for _, h in ipairs(items) do
+        if h.weapon then
+            if W.HasWeapon(h.weapon.invSlot) then
+                local d = W.ReadSlot(h.weapon, now)
+                local s = wstate[h.weapon.key]
+                if not d.has then
+                    parts[#parts + 1] = h.name .. " has worn off"
+                elseif h.kind == "charges" and d.charges > 0 and d.charges < db.chargeWarn then
+                    parts[#parts + 1] = string.format("%s: %d charges left", h.name, d.charges)
+                elseif h.kind ~= "charges" and d.remaining <= WarnSecFor(s, warnSec) then
+                    parts[#parts + 1] = string.format("%s: %s left", h.name, FormatTime(d.remaining))
+                end
+            end
+        else
+            local s = state[h.key]
+            if s and s.has then
+                local rem = Remaining(s, now)
+                if rem and rem ~= math.huge and rem <= WarnSecFor(s, warnSec) then
+                    parts[#parts + 1] = string.format("%s: %s left", h.name, FormatTime(rem))
+                end
+            elseif s then
+                parts[#parts + 1] = h.name .. " has worn off"
+            end
+        end
+    end
+    if #parts > 0 then ns.Warn("After combat: " .. table.concat(parts, ", ")) end
 end
 
 -- What's missing (and, with lowSec, what runs out within lowSec seconds).
@@ -1143,6 +1267,7 @@ local function BuildEntries(now, warnSec, preview)
                             remaining = rem, maxTime = s.maxTime, low = low, warnSec = ws, sort = low and 1 or 2 }
                     end
                 elseif (db.showMissing or preview) and MissingCounts(cat)
+                    and not ns.blind -- (buffs hidden in combat: can't tell it's missing)
                     and not (cat.key == "sleep" and sleep) -- (asleep: the timer bar says it all)
                     and not (cat.combatOnly and not InCombatLockdown()) then
                     local e = { kind = "missing", label = MissingLabel(cat, s), icon = MissingIcon(cat, s), sort = 0 }
@@ -1316,6 +1441,13 @@ function ns.Status()
     Print(string.format("class %s, leveling: %s, dungeon: %s, raid: %s", tostring(playerClass),
         tostring(ctx.leveling), tostring(ctx.dungeon), tostring(ctx.raid)))
     if ns.weaponOff then print("  weapons: left to PoisonWatch (it is enabled)") end
+    if ns.byNameOnly and next(ns.byNameOnly) then
+        local names = {}
+        for n in pairs(ns.byNameOnly) do names[#names + 1] = n end
+        table.sort(names)
+        print("  only found by name (missing from the buff list): " .. table.concat(names, ", "))
+    end
+    if ns.blind then print("  |cffffff00your buffs are hidden by the game right now (combat): the list below is from before|r") end
     local now = GetTime()
     for _, cat in ipairs(ns.CATEGORIES) do
         if ns.CategoryForClass(cat, playerClass) then
@@ -1476,7 +1608,14 @@ local function OnEvent(self, event, arg1, arg2, arg3)
     elseif event == "PLAYER_REGEN_DISABLED" then
         StopSleep()
         pcall(CombatCheck)
-    elseif event == "PLAYER_REGEN_ENABLED" or event == "MINIMAP_UPDATE_TRACKING" then
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        scanDirty = true
+        -- (a second later: buffs are readable again and the scan has caught up)
+        C_Timer.After(1, function()
+            local ok, err = pcall(ReleaseHeld)
+            if not ok then Print("|cffff5555error:|r " .. tostring(err)) end
+        end)
+    elseif event == "MINIMAP_UPDATE_TRACKING" then
         scanDirty = true
     elseif event == "PLAYER_ENTERING_WORLD" then
         ns.quietUntil = GetTime() + 5

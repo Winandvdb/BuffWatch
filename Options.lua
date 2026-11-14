@@ -92,6 +92,8 @@ function ns.CreateOptions()
         AddCheckbox("chat", "Chat warning", "Also print warnings in the chat window.")
         AddCheckbox("combatCheck", "Check when entering combat",
             "Entering combat: warn about a missing weapon poison/enchant, and inside dungeons and raids about missing buffs (at most once a minute).")
+        AddCheckbox("quietInCombat", "Hold warnings during combat",
+            "During a fight, 'running out' and 'worn off' warnings wait. A second after combat ends you get one warning with what still matters, for example 'After combat: Well Fed has worn off, Blessing of Might: 1:30 left'. The bars keep updating during the fight.")
         AddCheckbox("instanceCheck", "Check when entering a dungeon or raid", "List what's missing a few seconds after you zone in.")
         AddCheckbox("readyCheck", "Check on ready checks", "List what's missing, and what runs out within 10 minutes, when a ready check starts.")
 
