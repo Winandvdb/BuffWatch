@@ -93,7 +93,7 @@ function ns.CreateOptions()
         AddCheckbox("combatCheck", "Check when entering combat",
             "Entering combat: warn about a missing weapon poison/enchant, and inside dungeons and raids about missing buffs (at most once a minute).")
         AddCheckbox("quietInCombat", "Hold warnings during combat",
-            "During a fight, 'running out' and 'worn off' warnings wait. A second after combat ends you get one warning with what still matters, for example 'After combat: Well Fed has worn off, Blessing of Might: 1:30 left'. The bars keep updating during the fight.")
+            "During a fight, 'running out' and 'worn off' warnings wait, and buff bars are hidden (weapon poison / enchant bars stay). A second after combat ends you get one warning with what still matters, for example 'After combat: Well Fed has worn off, Blessing of Might: 1:30 left'.")
         AddCheckbox("instanceCheck", "Check when entering a dungeon or raid", "List what's missing a few seconds after you zone in.")
         AddCheckbox("readyCheck", "Check on ready checks", "List what's missing, and what runs out within 10 minutes, when a ready check starts.")
 
@@ -102,7 +102,7 @@ function ns.CreateOptions()
             "Hide the bars of buffs that are fine. A bar appears when a buff is missing or below the warning time. While this panel is open, or the frame is unlocked, all bars are shown.")
         AddCheckbox("showMissing", "Show missing buffs", "Show a red bar for each tracked buff you don't have.")
         AddCheckbox("sleepTimer", "Sleeping bag timer",
-            "While you sleep in the Cozy Sleeping Bag: how long you've slept, your stacks and a countdown to the next stack. The countdown learns the time between stacks from what it sees (shows 'learning' until then). Moving or combat ends the timer.")
+            "While you sleep in the Cozy Sleeping Bag: how long you've slept, your stacks and a countdown to the next stack. The countdown learns the time between stacks from what it sees (shows 'learning' until then). At 3/3 stacks it shows how long Well-Rested lasts, as sleeping now refreshes it. Getting up (no longer resting) or combat ends the timer.")
         AddCheckbox("locked", "Lock frame", "Unlock to drag the frame somewhere else (all bars are shown while unlocked).")
         AddSlider("scale", "Scale", "Size of the frame.", 0.5, 2, 0.05,
             function(v) return string.format("%d%%", v * 100 + 0.5) end)
@@ -167,6 +167,7 @@ local function ShowHelp()
     print("     groups: " .. GroupKeys())
     print("  /bwatch here <group>    - only track that group in the dungeon/raid you're in (again to undo)")
     print("  /bwatch sleepreset      - forget the learned sleeping bag stack timings")
+    print("  /bwatch castlog         - for 2 min, print casts, buffs, resting and the bag (to debug the sleep timer)")
     print("  /bwatch weapons         - what the game reports for your weapon enchants")
     print("  /bwatch reset           - reset position and settings (added buff names are kept)")
 end
@@ -222,6 +223,10 @@ SlashCmdList.BUFFWATCH = function(msg)
             result == "added" and "will be tracked in" or "no longer limited to", name, cat.label,
             list ~= "" and list or "every dungeon and raid (its usual setting)"))
         ns.Update()
+    elseif cmd == "castlog" or cmd == "log" then
+        if ns.ToggleCastLog() then
+            Print("logging for 2 minutes: put the sleeping bag down, lie in it, wait for a stack. /bwatch castlog again to stop.")
+        end
     elseif cmd == "sleepreset" then
         ns.g.sleepFirst, ns.g.sleepInterval = nil, nil
         Print("sleeping bag timings forgotten; they are learned again on your next sleep.")

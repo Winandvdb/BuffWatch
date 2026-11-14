@@ -5,7 +5,8 @@ that is missing or running low, in the game's own modern HUD style.
 
 ## What it tracks
 - **Leveling** (until you can't gain XP at level 60): the Cozy Sleeping Bag's **Well-Rested** buff, with a sleep timer
-  that counts down to your next stack, and **food** (Well Fed).
+  ("Sleeping 4:12 - 2/3 stacks", counting down to the next stack; at 3/3 it shows how long Well-Rested lasts, as
+  sleeping then refreshes it), and **food** (Well Fed), with an eating timer ("Eating - Well Fed in 0:07").
 - **Dungeons & raids**: food, flask, elixirs (physical or caster, per class), Zanza, Fortitude, Mark of the Wild,
   Arcane Intellect, paladin blessings (group buffs are only reported missing when that class is in your group).
 - **Unstable Magic**: Magical Awareness from the Elemental Attractor / Arcane Censer, while you carry one.
@@ -16,8 +17,8 @@ that is missing or running low, in the game's own modern HUD style.
 
 After you die, one warning lists everything you lost: "Lost on death: Find Minerals, Well Fed, Fortitude".
 
-During a fight, "running out" and "worn off" warnings wait; when combat ends you get one warning with what still
-matters ("After combat: Well Fed has worn off, Blessing of Might: 1:30 left"). WoW Forever hides your buffs from
+During a fight, "running out" and "worn off" warnings wait and buff bars are hidden (weapon enchant bars stay); when
+combat ends you get one warning with what still matters ("After combat: Well Fed has worn off, Blessing of Might: 1:30 left"). WoW Forever hides your buffs from
 addons in combat: BuffWatch keeps what it saw before the fight and never reports a buff missing that it can't see.
 
 ## Install
@@ -37,6 +38,7 @@ dungeons & raids, outside them, always ...) and which buffs count. Move the bars
 | `/bwatch auras` | your buffs with spell IDs (out of combat) |
 | `/bwatch add <group> <name or ID>` / `remove` | count another buff for a group |
 | `/bwatch here <group>` | only track a group in the dungeon you're in (again to undo) |
+| `/bwatch castlog` | for 2 minutes, print casts, buffs, resting and the sleeping bag (debugging the sleep timer) |
 | `/bwatch lock` / `unlock` / `reset` | frame and settings |
 
 ## Adding buffs

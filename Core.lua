@@ -84,6 +84,17 @@ local function ItemCount(id)
 end
 
 -- seconds until the item can be used again (0 = ready), nil = unknown
+-- when the item's cooldown started (GetTime() clock), or nil when it's ready
+local function ItemCooldownStart(id)
+    local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+    if not fn then return nil end
+    local ok, start, dur = pcall(fn, id)
+    if not ok then return nil end
+    start, dur = Num(start), Num(dur)
+    if start and dur and start > 0 and dur > 1.5 then return start end
+    return nil
+end
+
 local function ItemCooldown(id)
     local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
     if not fn then return nil end
@@ -429,6 +440,7 @@ local function ScanAuras(now)
     if bagSnapshot and ns.bagUsedAt and now - ns.bagUsedAt > 600 then bagSnapshot = nil end
     local candidates
     local seenAny = false
+    local eatAura -- the buff you have while eating, if any
     for i = 1, 40 do
         local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
         if not ok then complete = false break end -- (a read that fails is not "no more buffs")
@@ -439,10 +451,14 @@ local function ScanAuras(now)
         if not name and not id then complete = false end
         local key = KeyFor(name, id)
         local kcat = key and ns.CATEGORY_BY_KEY[key]
+        if name and ns.EATING_NAMES[name:lower()] then eatAura = a end
         if kcat and kcat.minDuration then
             -- too short to be the real thing (the eating buff before Well Fed): skip it
             local d = Num(a.duration)
-            if d and d > 0 and d < kcat.minDuration then key, kcat = nil, nil end
+            if d and d > 0 and d < kcat.minDuration then
+                if key == "food" then eatAura = a end
+                key, kcat = nil, nil
+            end
         end
         if key and state[key] and not (kcat or {}).weapon then
             -- remember the ID of a name match, so it still counts if only the ID is readable
@@ -466,6 +482,15 @@ local function ScanAuras(now)
                 candidates[#candidates + 1] = name
             end
         end
+    end
+    -- Eating: remember when it started (the eating buff's own start, else now)
+    if eatAura then
+        if not ns.eatStart then
+            local e, d = Num(eatAura.expirationTime), Num(eatAura.duration)
+            ns.eatStart = (e and d and e > 0 and d > 0) and (e - d) or now
+        end
+    elseif complete then
+        ns.eatStart = nil
     end
     -- In combat the game can hide your buffs from addons entirely: an empty list
     -- then means "can't see", not "no buffs". (Out of combat it's believed.)
@@ -572,6 +597,11 @@ local function UpdateBuffState(now)
             local s, f = state[cat.key], found[cat.key]
             if f then
                 local wasHas, prevStacks = s.has, (s.has and s.stacks) or 0
+                if cat.key == "food" and not wasHas and ns.eatStart and scannedOnce then
+                    -- Well Fed just arrived while eating: learn how long that takes
+                    local v = now - ns.eatStart
+                    if v >= 3 and v <= 60 then g.eatDelay = Average(g.eatDelay, v) end
+                end
                 s.has = true
                 if f.exp == 0 then
                     s.permanent, s.expires = true, nil
@@ -1142,7 +1172,26 @@ local function ChargeColor(ch)
 end
 
 -- Entry kinds: "missing", "buff", "sleeping"
+-- Smooth bars: a bar that follows the clock redraws its fill every frame
+-- (the rest of the row, text included, updates 4 times a second).
+-- row.anim = { up = true, start, dur } fills up; { ends, max } drains.
+local function RowAnimate(self)
+    local a = self.anim
+    if not a then return end
+    local now = GetTime()
+    if a.up then
+        SetBarValue(self, (now - a.start) / math.max(a.dur, 0.01))
+    else
+        SetBarValue(self, (a.ends - now) / math.max(a.max, 1))
+    end
+end
+
 local function SetRow(row, e, flash, warnSec)
+    if not row.animHooked then
+        row.animHooked = true
+        row:SetScript("OnUpdate", RowAnimate)
+    end
+    row.anim = nil
     row.icon:SetTexture(e.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     row.name:SetTextColor(1, 1, 1)
     row.time:SetTextColor(1, 1, 1)
@@ -1170,6 +1219,7 @@ local function SetRow(row, e, flash, warnSec)
     if e.kind == "sleeping" then
         SetFill(row, "fillChan")
         SetBarValue(row, e.progress)
+        row.anim = e.anim -- (eating / sleeping countdowns fill smoothly)
         row.name:SetText(e.label)
         row.time:SetText(e.timeText or "")
         return
@@ -1182,6 +1232,7 @@ local function SetRow(row, e, flash, warnSec)
         SetBarValue(row, 1)
     else
         SetBarValue(row, rem / math.max(e.maxTime or rem, 1))
+        row.anim = { ends = GetTime() + rem, max = math.max(e.maxTime or rem, 1) }
     end
 
     local label = e.label
@@ -1204,20 +1255,45 @@ local function SleepEntry(now, cat)
     local stacks = (s.has and s.stacks) or 0
     local elapsed = now - sleep.start
     local left, wait, since = SleepNext(now)
+    local max = ns.SLEEP_MAX_STACKS
     local label = string.format("Sleeping %s", FormatTime(elapsed))
-    if stacks > 0 then label = label .. string.format(" - %d stack%s", stacks, stacks == 1 and "" or "s") end
+    if stacks > 0 then label = label .. string.format(" - %d/%d stacks", stacks, max) end
     local e = { kind = "sleeping", label = label, icon = ItemIcon(ns.SLEEPING_BAG_ITEM) or cat.icon, sort = 0 }
-    if left then
+    if stacks >= max then
+        -- full: sleeping now only refreshes Well-Rested's time; show that time
+        e.label = label .. " (max)"
+        local rem = Remaining(s, now)
+        e.timeText = rem and rem ~= math.huge and FormatTime(rem) or ""
+        e.progress = 1
+    elseif left then
         if since > wait * 1.5 + 30 then
-            e.timeText, e.progress = "max?", 1 -- no new stack for a long time
+            e.timeText, e.progress = "next ?", 1 -- overdue: the learned wait may be off
         else
             e.timeText = "next " .. FormatTime(left)
             e.progress = math.min(1, since / math.max(wait, 1))
+            e.anim = { up = true, start = now - since, dur = wait }
         end
     else
         e.timeText, e.progress = "learning", 0
     end
     return e
+end
+
+-- Eating something that may give Well Fed? (Plain food never does: once Well
+-- Fed is 5 s overdue, the eating bar gives way to the normal missing bar.)
+local function EatingForWellFed(now)
+    return ns.eatStart ~= nil and now - ns.eatStart <= (g.eatDelay or ns.EAT_DELAY) + 5
+end
+
+-- While eating, before Well Fed: how long until it comes.
+local function EatEntry(now, cat)
+    local delay = g.eatDelay or ns.EAT_DELAY
+    local since = now - ns.eatStart
+    local left = delay - since
+    return { kind = "sleeping", label = "Eating", icon = cat.icon, sort = 0,
+             timeText = left > 0 and ("Well Fed in " .. FormatTime(math.ceil(left))) or "Well Fed soon",
+             progress = math.min(1, math.max(0, since / math.max(delay, 1))),
+             anim = { up = true, start = ns.eatStart, dur = delay } }
 end
 
 local function BuildEntries(now, warnSec, preview)
@@ -1243,10 +1319,12 @@ local function BuildEntries(now, warnSec, preview)
                             if preview or not db.onlyWhenNeeded or low then
                                 entries[#entries + 1] = { kind = "buff", label = d.name .. " (" .. info.short .. ")",
                                     icon = icon, remaining = d.remaining, maxTime = s.maxTime, charges = d.charges,
-                                    maxCharges = s.maxCharges, low = low, warnSec = ws, sort = low and 1 or 2 }
+                                    maxCharges = s.maxCharges, low = low, warnSec = ws, weapon = true,
+                                    sort = low and 1 or 2 }
                             end
                         elseif db.showMissing or preview then
-                            entries[#entries + 1] = { kind = "missing", label = WeaponLabel(info), icon = icon, sort = 0 }
+                            entries[#entries + 1] = { kind = "missing", label = WeaponLabel(info), icon = icon,
+                                weapon = true, sort = 0 }
                         end
                     end
                 end
@@ -1257,6 +1335,9 @@ local function BuildEntries(now, warnSec, preview)
             CheckBuffWarnings(cat, s, rem, on, warnSec, now)
             if cat.key == "sleep" and sleep and db.sleepTimer and db["mode_sleep"] ~= "off" and not dead then
                 entries[#entries + 1] = SleepEntry(now, cat)
+            end
+            if cat.key == "food" and EatingForWellFed(now) and not s.has and on then
+                entries[#entries + 1] = EatEntry(now, cat)
             end
             if on then
                 if s.has then
@@ -1269,6 +1350,7 @@ local function BuildEntries(now, warnSec, preview)
                 elseif (db.showMissing or preview) and MissingCounts(cat)
                     and not ns.blind -- (buffs hidden in combat: can't tell it's missing)
                     and not (cat.key == "sleep" and sleep) -- (asleep: the timer bar says it all)
+                    and not (cat.key == "food" and EatingForWellFed(now)) -- (eating: the eating bar says it all)
                     and not (cat.combatOnly and not InCombatLockdown()) then
                     local e = { kind = "missing", label = MissingLabel(cat, s), icon = MissingIcon(cat, s), sort = 0 }
                     local item = cat.items and ns.OwnedItem(cat)
@@ -1321,6 +1403,16 @@ local function UpdateUnsafe()
     local warnSec = db.warnMin * 60
     local preview = testMode or not db.locked or ns.editMode or (SettingsPanel and SettingsPanel:IsShown())
     local entries = testMode and TestEntries(now) or BuildEntries(now, warnSec, preview)
+    -- "Hold warnings during combat": no buff bars during a fight either (they're
+    -- built anyway, so warnings and states keep running). Weapon enchant bars
+    -- stay: poison charges matter mid-fight.
+    if db.quietInCombat and InCombatLockdown() and not preview then
+        local kept = {}
+        for _, e in ipairs(entries) do
+            if e.weapon then kept[#kept + 1] = e end
+        end
+        entries = kept
+    end
     if preview and #entries == 0 then
         -- unlocked with nothing tracked here: still something to grab and move
         entries[1] = { kind = "sleeping", label = "BuffWatch: nothing to track here",
@@ -1585,7 +1677,7 @@ local function OnEvent(self, event, arg1, arg2, arg3)
             self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
         end
         for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
-                             "READY_CHECK", "PLAYER_STARTED_MOVING", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
+                             "READY_CHECK", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
                              "PLAYER_LEVEL_UP", "GET_ITEM_INFO_RECEIVED", "MINIMAP_UPDATE_TRACKING",
                              "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_UPDATE_RESTING" }) do
             pcall(self.RegisterEvent, self, e)
@@ -1602,9 +1694,16 @@ local function OnEvent(self, event, arg1, arg2, arg3)
         -- (arg1 unit, arg2 cast GUID, arg3 spell ID)
         if arg1 == "player" and IsBagSpell(arg3) then OnBagUsed() end
     elseif event == "PLAYER_UPDATE_RESTING" then
-        if not IsResting_() then StopSleep() end
-    elseif event == "PLAYER_STARTED_MOVING" then
-        StopSleep()
+        if not IsResting_() then
+            StopSleep()
+        elseif db.sleepTimer and not sleep then
+            -- you start resting within 10 minutes of putting the bag down (its
+            -- cooldown starts then): that's lying down in it
+            local placed = ItemCooldownStart(ns.SLEEPING_BAG_ITEM)
+            if placed and GetTime() - placed >= 0 and GetTime() - placed < 600 then
+                sleep = { start = GetTime(), gains = 0 }
+            end
+        end
     elseif event == "PLAYER_REGEN_DISABLED" then
         StopSleep()
         pcall(CombatCheck)
@@ -1644,6 +1743,103 @@ local function OnEvent(self, event, arg1, arg2, arg3)
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         if arg1 == ns.SLEEPING_BAG_ITEM and not ns.bagSpellName then LoadBagSpell() end
     end
+end
+
+---------------------------------------------------------------------------
+-- /bwatch castlog: for 2 minutes, print what happens around the sleeping bag
+-- (your casts, buffs gained/lost with stacks, resting, the bag's cooldown,
+-- moving), to find the moment you actually lie down in it.
+---------------------------------------------------------------------------
+local logFrame = CreateFrame("Frame")
+local logStart, logBuffs, logCd, logToken
+
+local function Log(msg)
+    print(string.format("|cff33ff99[BW %5.1fs]|r %s", GetTime() - logStart, msg))
+end
+
+local function SpellText(id)
+    id = Num(id)
+    local n
+    if id and C_Spell and C_Spell.GetSpellInfo then
+        local ok, info = pcall(C_Spell.GetSpellInfo, id)
+        if ok and type(info) == "table" and Readable(info.name) then n = info.name end
+    end
+    return string.format("%s (spell %s)", tostring(n or "?"), tostring(id or "?"))
+end
+
+local function BuffStacks()
+    local t = {}
+    for i = 1, 40 do
+        local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or type(a) ~= "table" then break end
+        if Readable(a.name) and type(a.name) == "string" then t[a.name] = Num(a.applications) or 0 end
+    end
+    return t
+end
+
+local LOG_EVENTS = { "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_STOP",
+    "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_AURA",
+    "PLAYER_UPDATE_RESTING", "BAG_UPDATE_COOLDOWN", "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING" }
+
+local function StopLog()
+    if not logStart then return end
+    logFrame:UnregisterAllEvents()
+    Log("log stopped. Paste these lines to have the sleep start detected from them.")
+    logStart, logToken = nil, nil
+end
+
+logFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
+    local ok, err = pcall(function()
+        if event:find("^UNIT_SPELLCAST") then
+            if unit == "player" then Log((event:gsub("UNIT_SPELLCAST_", "cast ")) .. ": " .. SpellText(spellID)) end
+        elseif event == "UNIT_AURA" then
+            if unit ~= "player" then return end
+            local now = BuffStacks()
+            for n, st in pairs(now) do
+                if logBuffs[n] == nil then Log("+ buff " .. n .. (st > 0 and (" (" .. st .. " stacks)") or ""))
+                elseif logBuffs[n] ~= st then Log("  " .. n .. " stacks " .. logBuffs[n] .. " -> " .. st) end
+            end
+            for n in pairs(logBuffs) do
+                if now[n] == nil then Log("- buff " .. n) end
+            end
+            logBuffs = now
+        elseif event == "PLAYER_UPDATE_RESTING" then
+            Log("resting: " .. tostring(IsResting_()))
+        elseif event == "BAG_UPDATE_COOLDOWN" then
+            local s = ItemCooldownStart(ns.SLEEPING_BAG_ITEM)
+            if s ~= logCd then
+                logCd = s
+                Log(s and "sleeping bag cooldown started" or "sleeping bag ready")
+            end
+        elseif event == "PLAYER_STARTED_MOVING" then
+            Log("moving")
+        elseif event == "PLAYER_STOPPED_MOVING" then
+            Log("stopped moving")
+        end
+    end)
+    if not ok then print("BuffWatch castlog error: " .. tostring(err)) end
+end)
+
+-- Toggles the log; returns true when it started.
+function ns.ToggleCastLog()
+    if logStart then StopLog() return false end
+    logStart = GetTime()
+    logBuffs = BuffStacks()
+    logCd = ItemCooldownStart(ns.SLEEPING_BAG_ITEM)
+    for _, e in ipairs(LOG_EVENTS) do
+        if e:find("^UNIT_") and logFrame.RegisterUnitEvent then
+            pcall(logFrame.RegisterUnitEvent, logFrame, e, "player")
+        else
+            pcall(logFrame.RegisterEvent, logFrame, e)
+        end
+    end
+    Log(string.format("log started (2 min). resting: %s, bag: %s, Well-Rested stacks: %s",
+        tostring(IsResting_()), logCd and "on cooldown" or "ready",
+        tostring(logBuffs["Well-Rested"] or "none")))
+    local token = {}
+    logToken = token
+    C_Timer.After(120, function() if logToken == token then StopLog() end end)
+    return true
 end
 
 local lastEventError

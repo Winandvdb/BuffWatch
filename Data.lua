@@ -51,7 +51,10 @@ ns.MODES = {
 }
 
 ns.SLEEPING_BAG_ITEM = 211527 -- Cozy Sleeping Bag
+ns.SLEEP_MAX_STACKS = 3        -- Well-Rested's cap (seen in game: at 3, sleeping refreshes its time instead)
 ns.MAX_LEVEL = 60              -- "leveling" groups switch off at this level
+ns.EAT_DELAY = 10              -- seconds of eating before Well Fed (Classic food tooltips; learned in game)
+ns.EATING_NAMES = { ["food"] = true, ["food & drink"] = true } -- the buff while you eat (lower case)
 
 local ALL_BUT = function(...)
     local t = { WARRIOR = true, ROGUE = true, HUNTER = true, MAGE = true, WARLOCK = true,
