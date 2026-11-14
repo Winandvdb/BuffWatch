@@ -1,0 +1,14 @@
+## Interface: 16001, 11509
+## Title: BuffWatch
+## Notes: Warns when your sleeping bag, food, flask, elixir, raid buffs or weapon poisons are about to run out or missing. Leveling buffs stop at max level; dungeon and raid buffs take over.
+## Author: winan
+## Version: 1.0.0
+## IconTexture: Interface\Icons\Spell_Misc_Food
+## SavedVariables: BuffWatchGlobal
+## SavedVariablesPerCharacter: BuffWatchDB
+
+Data.lua
+Weapons.lua
+Core.lua
+Options.lua
+EditMode.lua
