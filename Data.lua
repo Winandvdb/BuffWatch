@@ -88,10 +88,16 @@ ns.MANA_CLASSES = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, PA
 --               as a castable spell (not too low, talent taken, racial owned)
 --   giver     - cast by that class: only reported missing while someone of
 --               that class is in your group (or you are that class)
+--   giverParty - with giver: the giver must be in your party (in a raid:
+--               your raid group), e.g. paladin auras
 --   manaOnly  - only for classes that use mana
 --   item / items - only tracked while you carry (one of) these item(s)
 --   instances - only in these instances (instance IDs); empty = every one.
 --               In game: /bwatch here <group> adds or removes the current one
+--   zones     - also (or only) in these outdoor zones (uiMapIDs). With
+--               instances and/or zones, the group is on where any matches
+--   equip     - the item is equipped, not used: a missing bar says "equip it"
+--               instead of showing the item's cooldown
 --   noPicker  - no per-buff checkboxes in the options' Buff list
 --   tracking  - minimap tracking (Find Herbs ...), read from the tracking
 --               menu as well as from your buffs
@@ -129,6 +135,18 @@ ns.CATEGORIES = {
       tip = "The 2-hour buff from the Elemental Attractor / Arcane Censer that lets you collect Motes of Unstable Magic. Only while you carry one of them. By default in every dungeon and raid; to limit it to the dungeons where motes drop, stand in one and type /bwatch here attractor (again to remove it).",
       names = { "Magical Awareness" },
       ids = { 1297774 } },
+
+    -- Argent Dawn: Scourgestones ------------------------------------------
+    { key = "argentdawn", label = "Argent Dawn Commission", mode = "always", equip = true, warn = false,
+      items = { 12846, 13209, 19812 }, -- Argent Dawn Commission, Seal of the Dawn, Rune of the Dawn
+      instances = { 329, 289 },        -- Stratholme, Scholomance
+      zones = { 1422, 1423 },          -- Western / Eastern Plaguelands
+      icon = "Interface\\Icons\\INV_Jewelry_Talisman_07",
+      tip = "The Argent Dawn Commission (or Seal / Rune of the Dawn) trinket, which you need equipped to collect Scourgestones. Only while you carry one, and only in Stratholme, Scholomance and the Plaguelands; add another dungeon by standing in it and typing /bwatch here argentdawn.",
+      names = { "Argent Dawn Commission", "Seal of the Dawn", "Rune of the Dawn" },
+      ids = { 17670 },              -- Argent Dawn Commission's equip aura
+      contains = { "argent dawn" },
+      noPicker = true }, -- (the Seal / Rune buff names are guesses)
 
     -- Raid consumables -----------------------------------------------------
     { key = "flask", label = "Flask", mode = "raids",
@@ -178,6 +196,13 @@ ns.CATEGORIES = {
       names = { "Blessing of Kings", "Greater Blessing of Kings", "Blessing of Might", "Greater Blessing of Might",
                 "Blessing of Wisdom", "Greater Blessing of Wisdom", "Blessing of Salvation", "Greater Blessing of Salvation",
                 "Blessing of Light", "Greater Blessing of Light", "Blessing of Sanctuary", "Greater Blessing of Sanctuary" } },
+
+    { key = "paladinaura", label = "Paladin aura", mode = "instances", giver = "PALADIN", giverParty = true,
+      warn = false, -- (drops whenever you leave the paladin's range: bar only, no worn-off warnings)
+      icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
+      tip = "Any paladin aura. Auras only reach the paladin's own party, so it's only reported missing when a paladin is in your party (in a raid: your raid group), or you are one.",
+      names = { "Devotion Aura", "Retribution Aura", "Concentration Aura", "Sanctity Aura",
+                "Shadow Resistance Aura", "Frost Resistance Aura", "Fire Resistance Aura" } },
 
     -- Class self buffs (only once you know the spell) ------------------------
     { key = "shout", label = "Battle Shout", mode = "always", classes = { WARRIOR = true }, self = true,

@@ -8,8 +8,10 @@ that is missing or running low, in the game's own modern HUD style.
   ("Sleeping 4:12 - 2/3 stacks", counting down to the next stack; at 3/3 it shows how long Well-Rested lasts, as
   sleeping then refreshes it), and **food** (Well Fed), with an eating timer ("Eating - Well Fed in 0:07").
 - **Dungeons & raids**: food, flask, elixirs (physical or caster, per class), Zanza, Fortitude, Mark of the Wild,
-  Arcane Intellect, paladin blessings (group buffs are only reported missing when that class is in your group).
+  Arcane Intellect, paladin blessings and auras (group buffs are only reported missing when that class is in your group).
 - **Unstable Magic**: Magical Awareness from the Elemental Attractor / Arcane Censer, while you carry one.
+- **Argent Dawn**: reminds you to equip the Argent Dawn Commission (or Seal / Rune of the Dawn) in Stratholme,
+  Scholomance and the Plaguelands, so Scourgestones drop. Only while you carry one.
 - **Gathering**: Find Herbs / Find Minerals, outside dungeons and raids.
 - **Your class's own buffs**, everywhere: armors, Inner Fire, Aspects, shields, Thorns, your own blessing, and more
   (only once you know the spell).
@@ -20,6 +22,11 @@ After you die, one warning lists everything you lost: "Lost on death: Find Miner
 During a fight, "running out" and "worn off" warnings wait and buff bars are hidden (weapon enchant bars stay); when
 combat ends you get one warning with what still matters ("After combat: Well Fed has worn off, Blessing of Might: 1:30 left"). WoW Forever hides your buffs from
 addons in combat: BuffWatch keeps what it saw before the fight and never reports a buff missing that it can't see.
+
+**Click a bar to fix it** (out of combat), when it's clear what to do: your own buffs are cast on you (armors,
+Inner Fire, Aspects, tracking, your class's blessing or Fortitude), the sleeping bag and Elemental Attractor /
+Arcane Censer are used, the Argent Dawn Commission is equipped, and the poison or oil that was on a weapon is put
+back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable.
 
 ## Install
 Copy the `BuffWatch` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.

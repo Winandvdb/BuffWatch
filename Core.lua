@@ -21,7 +21,8 @@ ns.DEFAULTS = {
     showMissing    = true,  -- show a bar for buffs that are missing
     onlyWhenNeeded = true,  -- hide bars of buffs that are fine
     sleepTimer     = true,
-    locked         = true,  -- unlocked = all bars shown so the frame can be placed
+    clickable      = true,  -- click a bar to cast / use / apply what it's missing (out of combat)
+    locked        = true,  -- unlocked = all bars shown so the frame can be placed
     scale          = 1,
     width          = 230,
     point          = { "CENTER", "UIParent", "CENTER", 0, -140 },
@@ -140,7 +141,14 @@ local function GetContext()
         local ok2, _, _, _, _, _, _, _, id = pcall(GetInstanceInfo)
         instanceID = ok2 and Num(id) or nil
     end
-    return { leveling = CanGainXP(), dungeon = itype == "party", raid = itype == "raid", instanceID = instanceID }
+    -- the zone map you're on (for groups limited to outdoor zones)
+    local mapID
+    if C_Map and C_Map.GetBestMapForUnit then
+        local ok3, m = pcall(C_Map.GetBestMapForUnit, "player")
+        mapID = ok3 and Num(m) or nil
+    end
+    return { leveling = CanGainXP(), dungeon = itype == "party", raid = itype == "raid", instanceID = instanceID,
+             mapID = mapID }
 end
 ns.GetContext = GetContext
 
@@ -158,13 +166,17 @@ end
 local function CatOn(cat, ctx)
     if not tracked[cat.key] then return false end
     if cat.weapon and ns.weaponOff then return false end
-    -- limited to certain instances (the instances field, plus /bwatch here)?
-    local fixed, mine = cat.instances, g.instances[cat.key]
-    if (fixed and #fixed > 0) or (mine and next(mine)) then
+    -- limited to certain instances (the instances field, plus /bwatch here)
+    -- and/or outdoor zones (the zones field)? Any match counts.
+    local fixed, mine, zones = cat.instances, g.instances[cat.key], cat.zones
+    if (fixed and #fixed > 0) or (mine and next(mine)) or (zones and #zones > 0) then
         local id = ctx.instanceID
         local ok = id and mine and mine[id]
         if not ok and id and fixed then
             for _, v in ipairs(fixed) do if v == id then ok = true break end end
+        end
+        if not ok and zones and ctx.mapID and not id then
+            for _, v in ipairs(zones) do if v == ctx.mapID then ok = true break end end
         end
         if not ok then return false end
     end
@@ -172,26 +184,60 @@ local function CatOn(cat, ctx)
 end
 ns.CatOn = CatOn
 
--- classes in your group, refreshed at most every 3 s
-local giverCache, giverAt = {}, -10
-local function GiverPresent(class)
+-- classes of the online members of your group, refreshed at most every 3 s
+-- (and right away on roster / online-status changes, see ns.ResetGivers)
+-- giverCache: the whole group; partyCache: only your party (in a raid: your
+-- raid group), for buffs that only reach the caster's party (paladin auras).
+local giverCache, partyCache, giverAt = {}, {}, -10
+
+-- A raid member's group number (1-8), or nil if it can't be read.
+local function RaidSubgroup(i)
+    if not GetRaidRosterInfo then return nil end
+    local ok, _, _, sub = pcall(GetRaidRosterInfo, i)
+    return ok and Num(sub) or nil
+end
+
+local function GiverPresent(class, partyOnly)
     if class == playerClass then return true end
     local now = GetTime()
     if now - giverAt > 3 then
         giverAt = now
         wipe(giverCache)
+        wipe(partyCache)
         local n = Num(GetNumGroupMembers and GetNumGroupMembers()) or 0
         local raid = IsInRaid and IsInRaid()
         if not Readable(raid) then raid = false end
+        -- your own raid group (unknown: everyone counts as your party)
+        local mySub
+        if raid then
+            for i = 1, n do
+                local me = UnitIsUnit("raid" .. i, "player")
+                if Readable(me) and me then mySub = RaidSubgroup(i) break end
+            end
+        end
+        local unknown = false
         for i = 1, n do
             local u = raid and ("raid" .. i) or ("party" .. i)
             if UnitExists(u) then
-                local _, c = UnitClass(u)
-                if Readable(c) and c then giverCache[c] = true end
+                -- offline members can't buff you (unreadable status: assume online)
+                local online = UnitIsConnected(u)
+                if not Readable(online) then online = true end
+                if online then
+                    local _, c = UnitClass(u)
+                    if Readable(c) and c then
+                        giverCache[c] = true
+                        local sub = raid and RaidSubgroup(i)
+                        if not raid or not mySub or not sub or sub == mySub then partyCache[c] = true end
+                    else
+                        unknown = true -- (just joined: class not loaded yet)
+                    end
+                end
             end
         end
+        -- someone's class isn't known yet: look again shortly instead of in 3 s
+        if unknown then giverAt = now - 2.5 end
     end
-    return giverCache[class] == true
+    return (partyOnly and partyCache or giverCache)[class] == true
 end
 function ns.ResetGivers() giverAt = -10 end
 
@@ -199,7 +245,7 @@ function ns.ResetGivers() giverAt = -10 end
 local function MissingCounts(cat)
     if cat.items and not ns.OwnedItem(cat) then return false end
     if cat.manaOnly and not ns.MANA_CLASSES[playerClass] then return false end
-    if cat.giver and not GiverPresent(cat.giver) then return false end
+    if cat.giver and not GiverPresent(cat.giver, cat.giverParty) then return false end
     return true
 end
 
@@ -233,6 +279,17 @@ local function KnowsSpell(name)
     return passive ~= true
 end
 
+local knowsCache = {} -- spell name -> true/false (cleared when your spells change, in RebuildTracked)
+local function KnowsSpellCached(name)
+    local v = knowsCache[name]
+    if v == nil then
+        v = KnowsSpell(name) and true or false
+        -- (in combat spell info can be hidden: a "no" then isn't kept)
+        if v or not InCombatLockdown() then knowsCache[name] = v end
+    end
+    return v
+end
+
 -- Is this buff ticked in the Buff list? (stored only when unticked: new buffs are on)
 function ns.NameKey(cat, name) return cat.key .. ":" .. name end
 function ns.NameOn(cat, name)
@@ -247,6 +304,7 @@ function ns.RebuildTracked()
     wipe(anyName)
     wipe(containsList)
     wipe(knownNames)
+    wipe(knowsCache)
     for _, cat in ipairs(ns.CATEGORIES) do
         if ns.CategoryForClass(cat, playerClass) then
             for _, part in ipairs(cat.contains or {}) do
@@ -362,6 +420,15 @@ local function IsBagSpell(spellID)
 end
 
 local function StopSleep() sleep = nil end
+
+-- Was the bag put down in the last 10 minutes (seen being used, or its
+-- cooldown started then)? Without that, resting or the buff turning up
+-- (hearthing to an inn, zoning) isn't you lying down in it.
+local function BagPlacedRecently(now)
+    if ns.bagUsedAt and now - ns.bagUsedAt >= 0 and now - ns.bagUsedAt < 600 then return true end
+    local placed = ItemCooldownStart(ns.SLEEPING_BAG_ITEM)
+    return placed and now - placed >= 0 and now - placed < 600 or false
+end
 
 -- Are you in a rested area (an inn, a city, or the sleeping bag's own)? You
 -- can't be sleeping in the bag outside one. (Unknown = no.)
@@ -494,7 +561,8 @@ local function ScanAuras(now)
     end
     -- In combat the game can hide your buffs from addons entirely: an empty list
     -- then means "can't see", not "no buffs". (Out of combat it's believed.)
-    if not seenAny and InCombatLockdown() then complete = false end
+    -- Right after a loading screen the list can also still be empty for a moment.
+    if not seenAny and (InCombatLockdown() or now < ns.quietUntil) then complete = false end
     -- A second look by name, as HealKit does (C_UnitAuras.GetAuraDataBySpellName):
     -- a tracked buff the walk over your buff list didn't return still counts.
     if C_UnitAuras.GetAuraDataBySpellName then
@@ -613,6 +681,11 @@ local function UpdateBuffState(now)
                 if f.dur and f.dur > 0 then s.maxTime = f.dur end
                 s.icon = f.icon or s.icon
                 s.name = f.name or s.name
+                if f.name and (cat.self or cat.giver == playerClass) and KnowsSpellCached(f.name) then
+                    -- (remembered for the click on its bar: which of the group's spells to cast)
+                    db.lastBuff = db.lastBuff or {}
+                    db.lastBuff[cat.key] = f.name
+                end
                 if f.stacks then s.stacks = f.stacks end
                 if cat.key == "sleep" and sleep and not IsResting_() then
                     StopSleep() -- out of a rested area: not sleeping, whatever the buff does
@@ -620,8 +693,10 @@ local function UpdateBuffState(now)
                 if cat.key == "sleep" and scannedOnce and db.sleepTimer and IsResting_() then
                     if not wasHas and not sleep then
                         -- the buff just appeared: you lay down (works even when using
-                        -- the bag isn't seen, e.g. when it's clicked as a placed object)
-                        sleep = { start = now, gains = 0 }
+                        -- the bag isn't seen, e.g. when it's clicked as a placed object),
+                        -- but only if the bag was put down just now: after a hearth or
+                        -- a loading screen the buff list is resent and it looks "new"
+                        if BagPlacedRecently(now) then sleep = { start = now, gains = 0 } end
                     elseif (f.stacks or 0) > prevStacks or not wasHas then
                         -- (Well-Rested gains stacks while you sleep: the count is the signal;
                         -- its timer refreshing with each stack isn't counted twice)
@@ -674,7 +749,7 @@ end
 
 local function CheckBuffWarnings(cat, s, rem, on, warnSec, now)
     warnSec = WarnSecFor(s, warnSec)
-    local quiet = not on or cat.warn == false or now < ns.quietUntil or IsDead()
+    local quiet = not on or cat.warn == false or ns.zoning or now < ns.quietUntil or IsDead()
     local name = s.name or cat.label
     if s.has then
         if not s.had or (s.lastRem and rem and rem > s.lastRem + 5) then s.warnedLow = false end
@@ -705,7 +780,7 @@ end
 local function CheckWeaponWarnings(info, s, d, on, warnSec, now)
     local itemID = GetInventoryItemID("player", info.invSlot)
     if not Readable(itemID) then itemID = s.itemID end
-    local quiet = not on or now < ns.quietUntil or IsDead()
+    local quiet = not on or ns.zoning or now < ns.quietUntil or IsDead()
 
     if d.has then
         if (s.lastRemaining and d.remaining > s.lastRemaining + 5)
@@ -1248,6 +1323,139 @@ local function SetRow(row, e, flash, warnSec)
 end
 
 ---------------------------------------------------------------------------
+-- Click actions: a bar whose fix is clear gets a click (out of combat only):
+-- your own buff spell (cast on yourself), the group's item (use or equip),
+-- or the poison / oil that was on the weapon (apply it to that hand).
+-- The clicks are secure buttons on top of the rows. They're parented to
+-- UIParent, never to the rows, and are let go of (hidden, unanchored) the
+-- moment combat starts, so the rows stay free to move during a fight.
+---------------------------------------------------------------------------
+local function ItemName(id)
+    local fn = (C_Item and C_Item.GetItemNameByID) or GetItemInfo
+    if not fn then return nil end
+    local ok, name = pcall(fn, id)
+    return ok and Readable(name) and type(name) == "string" and name or nil
+end
+
+-- The action for a buff group's bar, or nil when it isn't clear what to do.
+local function BuffAction(cat, s)
+    if not db.clickable or InCombatLockdown() then return nil end -- (no clicks then anyway)
+    local item = cat.items and ns.OwnedItem(cat)
+    if item then
+        local name = ItemName(item) or "the item"
+        return { type = "item", value = "item:" .. item,
+                 tip = (cat.equip and "Click to equip " or "Click to use ") .. name }
+    end
+    if cat.items then return nil end -- (an item group without the item: nothing to click)
+    -- your own spells only: self buffs, and group buffs of your own class
+    if not (cat.self or (cat.giver and cat.giver == playerClass)) then return nil end
+    -- the one you had last (this session, else remembered from before), if it's your spell
+    local last = db.lastBuff and db.lastBuff[cat.key]
+    for _, n in ipairs({ s.name or false, last or false }) do
+        if n and KnowsSpellCached(n) then
+            return { type = "spell", value = n, tip = "Click to cast " .. n }
+        end
+    end
+    -- else only when exactly one of the group's spells is yours (Frost or Ice
+    -- Armor, Find Herbs or Minerals: not clear until you've had one)
+    local only
+    for _, n in ipairs(ns.CategoryNames(cat, playerClass)) do
+        if ns.NameOn(cat, n) and KnowsSpellCached(n) then
+            if only then return nil end
+            only = n
+        end
+    end
+    return only and { type = "spell", value = only, tip = "Click to cast " .. only } or nil
+end
+
+-- The action for a weapon bar: the poison / oil last seen on that hand, if
+-- it's an item in your bags (a sharpening stone's enchant name isn't).
+local function WeaponAction(info, name)
+    if not db.clickable or InCombatLockdown() then return nil end
+    if not name or name == "Enchant" then return nil end
+    if ItemCount(name) <= 0 then return nil end
+    return { type = "macro", value = "/use " .. name .. "\n/use " .. info.invSlot,
+             tip = string.format("Click to apply %s to your %s", name, info.label:lower()) }
+end
+
+local actionButtons = {}
+
+-- Let go of every click button. Must run before combat lockdown starts
+-- (PLAYER_REGEN_DISABLED): after that, secure buttons can't be touched.
+local function ReleaseActionButtons()
+    if InCombatLockdown() then return end
+    for _, b in ipairs(actionButtons) do
+        b:Hide()
+        b:ClearAllPoints()
+    end
+end
+
+local function ActionButtonTip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine(self.tipTitle or "BuffWatch")
+    GameTooltip:AddLine(self.tipText or "", 1, 1, 1)
+    GameTooltip:Show()
+end
+
+local function GetActionButton(i)
+    local b = actionButtons[i]
+    if b then return b end
+    b = CreateFrame("Button", "BuffWatchAction" .. i, UIParent, "SecureActionButtonTemplate")
+    -- (both: the template acts on the one matching the "cast on key down" setting)
+    b:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.12)
+    b:SetScript("OnEnter", ActionButtonTip)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    actionButtons[i] = b
+    return b
+end
+
+local function SetAction(b, a)
+    local sig = a.type .. "|" .. a.value
+    if b.sig == sig then return end
+    b.sig = sig
+    b:SetAttribute("spell1", nil)
+    b:SetAttribute("item1", nil)
+    b:SetAttribute("macrotext1", nil)
+    b:SetAttribute("unit1", nil)
+    b:SetAttribute("type1", a.type)
+    if a.type == "spell" then
+        b:SetAttribute("spell1", a.value)
+        b:SetAttribute("unit1", "player")
+    elseif a.type == "item" then
+        b:SetAttribute("item1", a.value)
+    else
+        b:SetAttribute("macrotext1", a.value)
+    end
+end
+
+-- Out of combat: one click button over each row that has an action.
+local function UpdateActionButtons(entries, preview)
+    if InCombatLockdown() then return end
+    local on = db.clickable and db.locked and not preview
+    for i = 1, math.max(#entries, #actionButtons) do
+        local e = entries[i]
+        local a = on and e and e.action
+        if a and rows[i] then
+            local b = GetActionButton(i)
+            SetAction(b, a)
+            b.tipTitle, b.tipText = e.label, a.tip
+            b:SetFrameStrata(BW:GetFrameStrata())
+            b:SetFrameLevel(rows[i]:GetFrameLevel() + 10)
+            b:ClearAllPoints()
+            b:SetAllPoints(rows[i])
+            b:Show()
+        elseif actionButtons[i] then
+            actionButtons[i]:Hide()
+            actionButtons[i]:ClearAllPoints()
+        end
+    end
+end
+
+---------------------------------------------------------------------------
 -- Building the list of bars
 ---------------------------------------------------------------------------
 local function SleepEntry(now, cat)
@@ -1313,6 +1521,11 @@ local function BuildEntries(now, warnSec, preview)
                         local icon = GetInventoryItemTexture("player", info.invSlot)
                         if not Readable(icon) then icon = nil end
                         if d.has then
+                            -- remember what was on this hand, to put it back on with a click
+                            if d.name and d.name ~= "Enchant" then
+                                db.lastEnchant = db.lastEnchant or {}
+                                db.lastEnchant[info.key] = d.name
+                            end
                             local ws = WarnSecFor(s, warnSec)
                             local low = (d.remaining > 0 and d.remaining <= ws)
                                 or (d.charges > 0 and d.charges < db.chargeWarn)
@@ -1320,11 +1533,12 @@ local function BuildEntries(now, warnSec, preview)
                                 entries[#entries + 1] = { kind = "buff", label = d.name .. " (" .. info.short .. ")",
                                     icon = icon, remaining = d.remaining, maxTime = s.maxTime, charges = d.charges,
                                     maxCharges = s.maxCharges, low = low, warnSec = ws, weapon = true,
-                                    sort = low and 1 or 2 }
+                                    sort = low and 1 or 2, action = WeaponAction(info, d.name) }
                             end
                         elseif db.showMissing or preview then
+                            local last = db.lastEnchant and db.lastEnchant[info.key]
                             entries[#entries + 1] = { kind = "missing", label = WeaponLabel(info), icon = icon,
-                                weapon = true, sort = 0 }
+                                weapon = true, sort = 0, action = WeaponAction(info, last) }
                         end
                     end
                 end
@@ -1345,19 +1559,22 @@ local function BuildEntries(now, warnSec, preview)
                     local low = rem and rem <= ws
                     if preview or not db.onlyWhenNeeded or low then
                         entries[#entries + 1] = { kind = "buff", label = s.name or cat.label, icon = s.icon or cat.icon,
-                            remaining = rem, maxTime = s.maxTime, low = low, warnSec = ws, sort = low and 1 or 2 }
+                            remaining = rem, maxTime = s.maxTime, low = low, warnSec = ws, sort = low and 1 or 2,
+                            action = BuffAction(cat, s) }
                     end
                 elseif (db.showMissing or preview) and MissingCounts(cat)
                     and not ns.blind -- (buffs hidden in combat: can't tell it's missing)
                     and not (cat.key == "sleep" and sleep) -- (asleep: the timer bar says it all)
                     and not (cat.key == "food" and EatingForWellFed(now)) -- (eating: the eating bar says it all)
                     and not (cat.combatOnly and not InCombatLockdown()) then
-                    local e = { kind = "missing", label = MissingLabel(cat, s), icon = MissingIcon(cat, s), sort = 0 }
+                    local e = { kind = "missing", label = MissingLabel(cat, s), icon = MissingIcon(cat, s), sort = 0,
+                                action = BuffAction(cat, s) }
                     local item = cat.items and ns.OwnedItem(cat)
                     if item then
                         e.icon = ItemIcon(item) or cat.icon
-                        local cd = ItemCooldown(item)
-                        if cd and cd > 0 then e.timeText = "ready in " .. FormatTime(cd)
+                        local cd = not cat.equip and ItemCooldown(item)
+                        if cat.equip then e.timeText = "|cffffff00equip it|r" -- (a trinket: no cooldown to show)
+                        elseif cd and cd > 0 then e.timeText = "ready in " .. FormatTime(cd)
                         elseif cd then e.timeText = "|cff00ff00ready|r" end
                     end
                     entries[#entries + 1] = e
@@ -1395,7 +1612,8 @@ end
 local function UpdateUnsafe()
     local now = GetTime()
     if not testMode then CheckDeathState() end -- (before the scan: `state` is still from before a death)
-    if scanDirty or now - lastScan >= 1 then
+    -- (while zoning the buff list reads empty: keep the last state until it's back)
+    if not ns.zoning and (scanDirty or now - lastScan >= 1) then
         scanDirty = false
         lastScan = now
         UpdateBuffState(now)
@@ -1433,6 +1651,7 @@ local function UpdateUnsafe()
         row:Show()
     end
     for i = #entries + 1, #rows do rows[i]:Hide() end
+    UpdateActionButtons(entries, preview or testMode)
 
     -- nothing to show: invisible and click-through (not :Hide(), that stops OnUpdate)
     if #entries == 0 then
@@ -1677,9 +1896,11 @@ local function OnEvent(self, event, arg1, arg2, arg3)
             self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
         end
         for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
-                             "READY_CHECK", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
+                             "READY_CHECK", "GROUP_ROSTER_UPDATE", "UNIT_CONNECTION", "SPELLS_CHANGED",
                              "PLAYER_LEVEL_UP", "GET_ITEM_INFO_RECEIVED", "MINIMAP_UPDATE_TRACKING",
-                             "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_UPDATE_RESTING" }) do
+                             "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_UPDATE_RESTING",
+                             "PLAYER_LEAVING_WORLD", "LOADING_SCREEN_ENABLED", "LOADING_SCREEN_DISABLED",
+                             "ZONE_CHANGED_NEW_AREA" }) do
             pcall(self.RegisterEvent, self, e)
         end
         self:SetScript("OnUpdate", OnUpdate)
@@ -1699,12 +1920,12 @@ local function OnEvent(self, event, arg1, arg2, arg3)
         elseif db.sleepTimer and not sleep then
             -- you start resting within 10 minutes of putting the bag down (its
             -- cooldown starts then): that's lying down in it
-            local placed = ItemCooldownStart(ns.SLEEPING_BAG_ITEM)
-            if placed and GetTime() - placed >= 0 and GetTime() - placed < 600 then
+            if BagPlacedRecently(GetTime()) then
                 sleep = { start = GetTime(), gains = 0 }
             end
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        ReleaseActionButtons() -- (first: the last moment secure buttons can be changed)
         StopSleep()
         pcall(CombatCheck)
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -1714,9 +1935,18 @@ local function OnEvent(self, event, arg1, arg2, arg3)
             local ok, err = pcall(ReleaseHeld)
             if not ok then Print("|cffff5555error:|r " .. tostring(err)) end
         end)
-    elseif event == "MINIMAP_UPDATE_TRACKING" then
+    elseif event == "MINIMAP_UPDATE_TRACKING" or event == "ZONE_CHANGED_NEW_AREA" then
+        scanDirty = true
+    elseif event == "PLAYER_LEAVING_WORLD" or event == "LOADING_SCREEN_ENABLED" then
+        -- zoning: the game reports no buffs (and no tracking) for a moment.
+        -- Keep what was seen before and stay quiet until the new zone is in.
+        ns.zoning = true
+    elseif event == "LOADING_SCREEN_DISABLED" then
+        ns.zoning = false
+        ns.quietUntil = math.max(ns.quietUntil, GetTime() + 5)
         scanDirty = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        ns.zoning = false
         ns.quietUntil = GetTime() + 5
         StopSleep()
         scanDirty = true
@@ -1736,8 +1966,10 @@ local function OnEvent(self, event, arg1, arg2, arg3)
             wasDead = false
             OnRevived()
         end
-    elseif event == "GROUP_ROSTER_UPDATE" then
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "UNIT_CONNECTION" then
+        -- someone joined, left, went offline or came back: redraw now
         ns.ResetGivers()
+        ns.Update()
     elseif event == "SPELLS_CHANGED" or event == "PLAYER_LEVEL_UP" then
         ns.RebuildTracked()
     elseif event == "GET_ITEM_INFO_RECEIVED" then

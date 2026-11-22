@@ -101,6 +101,8 @@ function ns.CreateOptions()
         AddCheckbox("onlyWhenNeeded", "Only show when needed",
             "Hide the bars of buffs that are fine. A bar appears when a buff is missing or below the warning time. While this panel is open, or the frame is unlocked, all bars are shown.")
         AddCheckbox("showMissing", "Show missing buffs", "Show a red bar for each tracked buff you don't have.")
+        AddCheckbox("clickable", "Click a bar to fix it",
+            "Out of combat, click a bar to fix it when it's clear what to do: cast your own buff on yourself (armors, Inner Fire, Aspects, tracking, your class's blessing, Fortitude ...), use the sleeping bag or Elemental Attractor / Arcane Censer, equip the Argent Dawn Commission, or put the poison or oil that was on a weapon back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable (BuffWatch can't know which one you want). During combat bars can't be clicked.")
         AddCheckbox("sleepTimer", "Sleeping bag timer",
             "While you sleep in the Cozy Sleeping Bag: how long you've slept, your stacks and a countdown to the next stack. The countdown learns the time between stacks from what it sees (shows 'learning' until then). At 3/3 stacks it shows how long Well-Rested lasts, as sleeping now refreshes it. Getting up (no longer resting) or combat ends the timer.")
         AddCheckbox("locked", "Lock frame", "Unlock to drag the frame somewhere else (all bars are shown while unlocked).")
