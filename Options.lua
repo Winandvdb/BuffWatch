@@ -144,6 +144,7 @@ local function SetOption(key, value)
         OnSettingChanged()
     end
 end
+ns.SetOption = SetOption -- (Alt+Right-click on a bar: keeps the options panel in sync)
 
 ---------------------------------------------------------------------------
 -- Slash commands
@@ -168,6 +169,7 @@ local function ShowHelp()
     print("  /bsent remove <group> <buff name or spell ID> - undo that")
     print("     groups: " .. GroupKeys())
     print("  /bsent here <group>    - only track that group in the dungeon/raid you're in (again to undo)")
+    print("  /bsent undo            - track the group you last hid (Alt+Right-click on a bar hides a group)")
     print("  /bsent sleepreset      - forget the learned sleeping bag stack timings")
     print("  /bsent castlog         - for 2 min, print casts, buffs, resting and the bag (to debug the sleep timer)")
     print("  /bsent weapons         - what the game reports for your weapon enchants")
@@ -192,6 +194,8 @@ SlashCmdList.BUFFSENTINEL = function(msg)
         Print(ns.IsTest() and "test mode ON. /bsent test again to stop." or "test mode OFF.")
     elseif cmd == "status" then
         ns.Status()
+    elseif cmd == "undo" then
+        ns.UndoHide()
     elseif cmd == "auras" or cmd == "buffs" then
         ns.ListAuras()
     elseif cmd == "add" or cmd == "remove" then

@@ -1390,23 +1390,35 @@ local function ReleaseActionButtons()
     end
 end
 
-local function ActionButtonTip(self)
+-- Alt+Right-click on a bar: stop tracking its group (When to track: Off).
+-- Works on every bar with a group, clickable or not, in combat too.
+local HIDE_HINT = "Alt+Right-click to hide this"
+local function BarTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:AddLine(self.tipTitle or "Buff Sentinel")
-    GameTooltip:AddLine(self.tipText or "", 1, 1, 1)
+    if self.tipText then GameTooltip:AddLine(self.tipText, 1, 1, 1) end
+    if self.hideKey then GameTooltip:AddLine(HIDE_HINT, 0.6, 0.6, 0.6) end
     GameTooltip:Show()
+end
+
+local function BarClicked(self, button)
+    if button == "RightButton" and IsAltKeyDown() and self.hideKey and ns.HideGroup then
+        ns.HideGroup(self.hideKey)
+    end
 end
 
 local function GetActionButton(i)
     local b = actionButtons[i]
     if b then return b end
     b = CreateFrame("Button", "BuffSentinelAction" .. i, UIParent, "SecureActionButtonTemplate")
-    -- (both: the template acts on the one matching the "cast on key down" setting)
-    b:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+    -- (left: both, the template acts on the one matching the "cast on key down"
+    -- setting; right has no secure action, only Alt+Right-click to hide)
+    b:RegisterForClicks("LeftButtonUp", "LeftButtonDown", "RightButtonUp")
+    b:HookScript("OnClick", BarClicked)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     hl:SetColorTexture(1, 1, 1, 0.12)
-    b:SetScript("OnEnter", ActionButtonTip)
+    b:SetScript("OnEnter", BarTip)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:Hide()
     actionButtons[i] = b
@@ -1442,7 +1454,7 @@ local function UpdateActionButtons(entries, preview)
         if a and rows[i] then
             local b = GetActionButton(i)
             SetAction(b, a)
-            b.tipTitle, b.tipText = e.label, a.tip
+            b.tipTitle, b.tipText, b.hideKey = e.label, a.tip, e.key
             b:SetFrameStrata(BW:GetFrameStrata())
             b:SetFrameLevel(rows[i]:GetFrameLevel() + 10)
             b:ClearAllPoints()
@@ -1510,6 +1522,7 @@ local function BuildEntries(now, warnSec, preview)
     local dead = IsDead()
 
     for _, cat in ipairs(ns.CATEGORIES) do
+        local first = #entries + 1 -- (the bars this group adds get its key, for Alt+Right-click)
         local on = CatOn(cat, ctx) and not dead
         if cat.weapon then
             if on then
@@ -1581,6 +1594,7 @@ local function BuildEntries(now, warnSec, preview)
                 end
             end
         end
+        for i = first, #entries do entries[i].key = cat.key end
     end
 
     table.sort(entries, function(a, b)
@@ -1648,6 +1662,15 @@ local function UpdateUnsafe()
         row:SetPoint("TOPLEFT", BW, "TOPLEFT", PAD, -PAD - (i - 1) * (ROW_H + PAD))
         row:SetPoint("TOPRIGHT", BW, "TOPRIGHT", -PAD, -PAD - (i - 1) * (ROW_H + PAD))
         SetRow(row, e, flash, warnSec)
+        -- (rows take the mouse only while locked: unlocked, the frame behind them is dragged)
+        row.hideKey, row.tipTitle = e.key, e.label
+        if not row.mouseHooked then
+            row.mouseHooked = true
+            row:SetScript("OnMouseUp", BarClicked)
+            row:SetScript("OnEnter", BarTip)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        row:EnableMouse(db.locked and not preview and e.key ~= nil)
         row:Show()
     end
     for i = #entries + 1, #rows do rows[i]:Hide() end
@@ -1692,6 +1715,29 @@ function ns.SetTest(on)
     ns.Update()
 end
 function ns.IsTest() return testMode end
+
+-- Alt+Right-click on a bar: its group's "When to track" goes to Off.
+-- /bsent undo puts the last one back.
+local lastHidden
+function ns.HideGroup(key)
+    local cat = ns.CATEGORY_BY_KEY[key]
+    local k = "mode_" .. key
+    if not cat or db[k] == "off" then return end
+    lastHidden = { key = key, mode = db[k] }
+    ns.SetOption(k, "off")
+    Print(string.format("%s hidden (When to track: Off). |cffffff00/bsent undo|r brings it back, or change it in Esc > Options > AddOns > Buff Sentinel > Buff list.", cat.label))
+end
+
+function ns.UndoHide()
+    if not lastHidden then
+        Print("nothing to undo.")
+        return
+    end
+    local h = lastHidden
+    lastHidden = nil
+    ns.SetOption("mode_" .. h.key, h.mode)
+    Print(string.format("%s is tracked again.", ns.CATEGORY_BY_KEY[h.key].label))
+end
 
 -- Added names (strings) and spell IDs (numbers) live in g.extra[key].
 function ns.AddName(key, value)

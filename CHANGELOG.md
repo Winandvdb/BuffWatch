@@ -1,5 +1,9 @@
 # Buff Sentinel
 
+## 1.4.0
+- Alt+Right-click a bar to hide it: its group is no longer tracked (When to track: Off). `/bsent undo` brings
+  the last one back.
+
 ## 1.3.0
 - Renamed from BuffWatch to Buff Sentinel (folder `BuffSentinel`, command `/bsent`).
 - Click a bar to fix it (out of combat): casts your own buff on you (armors, Inner Fire, Aspects, tracking,

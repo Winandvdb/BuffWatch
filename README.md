@@ -28,6 +28,9 @@ Inner Fire, Aspects, tracking, your class's blessing or Fortitude), the sleeping
 Arcane Censer are used, the Argent Dawn Commission is equipped, and the poison or oil that was on a weapon is put
 back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable.
 
+**Alt+Right-click a bar to hide it**: that group is no longer tracked (When to track: Off). `/bsent undo` brings the
+last one back, or turn it on again in the Buff list.
+
 ## Install
 Copy the `BuffSentinel` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.
 Rogues: disable PoisonWatch, Buff Sentinel leaves poisons to it while it's enabled.
@@ -46,6 +49,7 @@ dungeons & raids, outside them, always ...) and which buffs count. Move the bars
 | `/bsent add <group> <name or ID>` / `remove` | count another buff for a group |
 | `/bsent here <group>` | only track a group in the dungeon you're in (again to undo) |
 | `/bsent castlog` | for 2 minutes, print casts, buffs, resting and the sleeping bag (debugging the sleep timer) |
+| `/bsent undo` | track the group you last hid with Alt+Right-click again |
 | `/bsent lock` / `unlock` / `reset` | frame and settings |
 
 ## Adding buffs
