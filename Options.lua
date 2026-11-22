@@ -1,5 +1,5 @@
--- BuffWatch: options panel (Esc > Options > AddOns > BuffWatch), its Buff list
--- page, and /bwatch.
+-- Buff Sentinel: options panel (Esc > Options > AddOns > Buff Sentinel), its Buff list
+-- page, and /bsent.
 local _, ns = ...
 local Print = ns.Print
 
@@ -14,7 +14,7 @@ local function OnSettingChanged()
 end
 
 local function Register(key, varType, label)
-    local setting = Settings.RegisterAddOnSetting(category, "BuffWatch_" .. key, key,
+    local setting = Settings.RegisterAddOnSetting(category, "BuffSentinel_" .. key, key,
         ns.db, varType, label, ns.DEFAULTS[key])
     setting:SetValueChangedCallback(OnSettingChanged)
     settingObjs[key] = setting
@@ -46,7 +46,7 @@ end
 -- One checkbox per buff name: ticked = it counts for its group (the default).
 local function AddBuffCheckbox(cat, name)
     local key = ns.NameKey(cat, name)
-    local var = "BuffWatch_buff_" .. (key:gsub("[^%w]", "_"))
+    local var = "BuffSentinel_buff_" .. (key:gsub("[^%w]", "_"))
     local setting = Settings.RegisterAddOnSetting(category, var, key, ns.db.buffOn, "boolean", name, true)
     setting:SetValueChangedCallback(function()
         ns.RebuildTracked()
@@ -78,7 +78,7 @@ end
 function ns.CreateOptions()
     if mainCategory or not (Settings and Settings.RegisterVerticalLayoutCategory) then return end
     local ok, err = pcall(function()
-        mainCategory, layout = Settings.RegisterVerticalLayoutCategory("BuffWatch")
+        mainCategory, layout = Settings.RegisterVerticalLayoutCategory("Buff Sentinel")
         category = mainCategory
         AddHeader("Warnings")
         AddSlider("warnMin", "Warn before it runs out",
@@ -102,7 +102,7 @@ function ns.CreateOptions()
             "Hide the bars of buffs that are fine. A bar appears when a buff is missing or below the warning time. While this panel is open, or the frame is unlocked, all bars are shown.")
         AddCheckbox("showMissing", "Show missing buffs", "Show a red bar for each tracked buff you don't have.")
         AddCheckbox("clickable", "Click a bar to fix it",
-            "Out of combat, click a bar to fix it when it's clear what to do: cast your own buff on yourself (armors, Inner Fire, Aspects, tracking, your class's blessing, Fortitude ...), use the sleeping bag or Elemental Attractor / Arcane Censer, equip the Argent Dawn Commission, or put the poison or oil that was on a weapon back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable (BuffWatch can't know which one you want). During combat bars can't be clicked.")
+            "Out of combat, click a bar to fix it when it's clear what to do: cast your own buff on yourself (armors, Inner Fire, Aspects, tracking, your class's blessing, Fortitude ...), use the sleeping bag or Elemental Attractor / Arcane Censer, equip the Argent Dawn Commission, or put the poison or oil that was on a weapon back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable (Buff Sentinel can't know which one you want). During combat bars can't be clicked.")
         AddCheckbox("sleepTimer", "Sleeping bag timer",
             "While you sleep in the Cozy Sleeping Bag: how long you've slept, your stacks and a countdown to the next stack. The countdown learns the time between stacks from what it sees (shows 'learning' until then). At 3/3 stacks it shows how long Well-Rested lasts, as sleeping now refreshes it. Getting up (no longer resting) or combat ends the timer.")
         AddCheckbox("locked", "Lock frame", "Unlock to drag the frame somewhere else (all bars are shown while unlocked).")
@@ -158,25 +158,25 @@ local function GroupKeys()
 end
 
 local function ShowHelp()
-    Print("commands (or Esc > Options > AddOns > BuffWatch):")
-    print("  /bwatch options         - open the options panel")
-    print("  /bwatch lock | unlock   - lock/unlock the frame (drag to move when unlocked)")
-    print("  /bwatch test            - preview bars and the sleep timer (time runs x20)")
-    print("  /bwatch status          - what is tracked here and now, and the learned sleep timings")
-    print("  /bwatch auras           - list your buffs with spell IDs (out of combat)")
-    print("  /bwatch add <group> <buff name or spell ID>    - count another buff for a group")
-    print("  /bwatch remove <group> <buff name or spell ID> - undo that")
+    Print("commands (or Esc > Options > AddOns > Buff Sentinel):")
+    print("  /bsent options         - open the options panel")
+    print("  /bsent lock | unlock   - lock/unlock the frame (drag to move when unlocked)")
+    print("  /bsent test            - preview bars and the sleep timer (time runs x20)")
+    print("  /bsent status          - what is tracked here and now, and the learned sleep timings")
+    print("  /bsent auras           - list your buffs with spell IDs (out of combat)")
+    print("  /bsent add <group> <buff name or spell ID>    - count another buff for a group")
+    print("  /bsent remove <group> <buff name or spell ID> - undo that")
     print("     groups: " .. GroupKeys())
-    print("  /bwatch here <group>    - only track that group in the dungeon/raid you're in (again to undo)")
-    print("  /bwatch sleepreset      - forget the learned sleeping bag stack timings")
-    print("  /bwatch castlog         - for 2 min, print casts, buffs, resting and the bag (to debug the sleep timer)")
-    print("  /bwatch weapons         - what the game reports for your weapon enchants")
-    print("  /bwatch reset           - reset position and settings (added buff names are kept)")
+    print("  /bsent here <group>    - only track that group in the dungeon/raid you're in (again to undo)")
+    print("  /bsent sleepreset      - forget the learned sleeping bag stack timings")
+    print("  /bsent castlog         - for 2 min, print casts, buffs, resting and the bag (to debug the sleep timer)")
+    print("  /bsent weapons         - what the game reports for your weapon enchants")
+    print("  /bsent reset           - reset position and settings (added buff names are kept)")
 end
 
-SLASH_BUFFWATCH1 = "/bwatch"
-SLASH_BUFFWATCH2 = "/buffwatch"
-SlashCmdList.BUFFWATCH = function(msg)
+SLASH_BUFFSENTINEL1 = "/bsent"
+SLASH_BUFFSENTINEL2 = "/buffsentinel"
+SlashCmdList.BUFFSENTINEL = function(msg)
     if not ns.db then return end
     local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = (cmd or ""):lower()
@@ -186,10 +186,10 @@ SlashCmdList.BUFFWATCH = function(msg)
     elseif cmd == "lock" then
         SetOption("locked", true); Print("frame locked.")
     elseif cmd == "unlock" then
-        SetOption("locked", false); Print("frame unlocked: all bars shown, drag to move. /bwatch lock when done.")
+        SetOption("locked", false); Print("frame unlocked: all bars shown, drag to move. /bsent lock when done.")
     elseif cmd == "test" then
         ns.SetTest(not ns.IsTest())
-        Print(ns.IsTest() and "test mode ON. /bwatch test again to stop." or "test mode OFF.")
+        Print(ns.IsTest() and "test mode ON. /bsent test again to stop." or "test mode OFF.")
     elseif cmd == "status" then
         ns.Status()
     elseif cmd == "auras" or cmd == "buffs" then
@@ -198,7 +198,7 @@ SlashCmdList.BUFFWATCH = function(msg)
         local key, value = rest:match("^(%S+)%s+(.+)$")
         key = key and key:lower()
         if not key or not ns.CATEGORY_BY_KEY[key] or ns.CATEGORY_BY_KEY[key].weapon then
-            Print("usage: /bwatch " .. cmd .. " <group> <buff name or spell ID>; groups: " .. GroupKeys())
+            Print("usage: /bsent " .. cmd .. " <group> <buff name or spell ID>; groups: " .. GroupKeys())
             return
         end
         if cmd == "add" then
@@ -212,7 +212,7 @@ SlashCmdList.BUFFWATCH = function(msg)
         local key = rest:lower()
         local cat = ns.CATEGORY_BY_KEY[key]
         if not cat then
-            Print("usage: /bwatch here <group>; groups: " .. GroupKeys())
+            Print("usage: /bsent here <group>; groups: " .. GroupKeys())
             return
         end
         local result, name = ns.ToggleHere(key)
@@ -227,7 +227,7 @@ SlashCmdList.BUFFWATCH = function(msg)
         ns.Update()
     elseif cmd == "castlog" or cmd == "log" then
         if ns.ToggleCastLog() then
-            Print("logging for 2 minutes: put the sleeping bag down, lie in it, wait for a stack. /bwatch castlog again to stop.")
+            Print("logging for 2 minutes: put the sleeping bag down, lie in it, wait for a stack. /bsent castlog again to stop.")
         end
     elseif cmd == "sleepreset" then
         ns.g.sleepFirst, ns.g.sleepInterval = nil, nil

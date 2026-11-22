@@ -1,4 +1,4 @@
--- BuffWatch: shared helpers and the table of buff groups it tracks.
+-- Buff Sentinel: shared helpers and the table of buff groups it tracks.
 -- To add a buff or a class, add or edit an entry in ns.CATEGORIES below.
 local _, ns = ...
 
@@ -22,7 +22,7 @@ function ns.Num(v)
 end
 
 function ns.Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99BuffWatch|r: " .. msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Buff Sentinel|r: " .. msg)
 end
 
 function ns.FormatTime(sec)
@@ -93,7 +93,7 @@ ns.MANA_CLASSES = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, PA
 --   manaOnly  - only for classes that use mana
 --   item / items - only tracked while you carry (one of) these item(s)
 --   instances - only in these instances (instance IDs); empty = every one.
---               In game: /bwatch here <group> adds or removes the current one
+--               In game: /bsent here <group> adds or removes the current one
 --   zones     - also (or only) in these outdoor zones (uiMapIDs). With
 --               instances and/or zones, the group is on where any matches
 --   equip     - the item is equipped, not used: a missing bar says "equip it"
@@ -103,13 +103,13 @@ ns.MANA_CLASSES = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, PA
 --               menu as well as from your buffs
 --   weapon    - temporary weapon enchants per hand (Weapons.lua)
 -- Unknown fields are ignored; a misspelled buff name just never matches.
--- In game: /bwatch add <group key> <buff name or spell ID> adds a name.
+-- In game: /bsent add <group key> <buff name or spell ID> adds a name.
 ---------------------------------------------------------------------------
 ns.CATEGORIES = {
     -- Leveling ---------------------------------------------------------------
     { key = "sleep", label = "Sleeping Bag", mode = "leveling", item = ns.SLEEPING_BAG_ITEM,
       icon = "Interface\\Icons\\INV_Misc_Bag_08",
-      tip = "The Cozy Sleeping Bag's buff, plus a timer while you sleep that counts down to your next stack. Only reported missing while the bag is in your bags; the row then shows when the bag can be used again. If the buff isn't recognised, BuffWatch learns its name the first time you use the bag.",
+      tip = "The Cozy Sleeping Bag's buff, plus a timer while you sleep that counts down to your next stack. Only reported missing while the bag is in your bags; the row then shows when the bag can be used again. If the buff isn't recognised, Buff Sentinel learns its name the first time you use the bag.",
       names = { "Well-Rested", "Well Rested", "Cozy Sleeping Bag", "Sleeping Bag" },
       ids = { 429959 }, -- Well-Rested (seen in game: 1:20:00 after sleeping)
       contains = { "sleep", "cozy", "rested" }, -- any buff whose name contains one of these
@@ -132,7 +132,7 @@ ns.CATEGORIES = {
     { key = "attractor", label = "Magical Awareness (Unstable Magic)", mode = "instances",
       items = { 281371, 275730 }, -- Elemental Attractor (Horde), Arcane Censer (Alliance)
       icon = "Interface\\Icons\\Spell_Arcane_Arcane04",
-      tip = "The 2-hour buff from the Elemental Attractor / Arcane Censer that lets you collect Motes of Unstable Magic. Only while you carry one of them. By default in every dungeon and raid; to limit it to the dungeons where motes drop, stand in one and type /bwatch here attractor (again to remove it).",
+      tip = "The 2-hour buff from the Elemental Attractor / Arcane Censer that lets you collect Motes of Unstable Magic. Only while you carry one of them. By default in every dungeon and raid; to limit it to the dungeons where motes drop, stand in one and type /bsent here attractor (again to remove it).",
       names = { "Magical Awareness" },
       ids = { 1297774 } },
 
@@ -142,7 +142,7 @@ ns.CATEGORIES = {
       instances = { 329, 289 },        -- Stratholme, Scholomance
       zones = { 1422, 1423 },          -- Western / Eastern Plaguelands
       icon = "Interface\\Icons\\INV_Jewelry_Talisman_07",
-      tip = "The Argent Dawn Commission (or Seal / Rune of the Dawn) trinket, which you need equipped to collect Scourgestones. Only while you carry one, and only in Stratholme, Scholomance and the Plaguelands; add another dungeon by standing in it and typing /bwatch here argentdawn.",
+      tip = "The Argent Dawn Commission (or Seal / Rune of the Dawn) trinket, which you need equipped to collect Scourgestones. Only while you carry one, and only in Stratholme, Scholomance and the Plaguelands; add another dungeon by standing in it and typing /bsent here argentdawn.",
       names = { "Argent Dawn Commission", "Seal of the Dawn", "Rune of the Dawn" },
       ids = { 17670 },              -- Argent Dawn Commission's equip aura
       contains = { "argent dawn" },
@@ -256,7 +256,7 @@ ns.CATEGORIES = {
       classes = ALL_BUT("HUNTER", "DRUID"),
       modeByClass = { ROGUE = "always", SHAMAN = "always" },
       icon = "Interface\\Icons\\Ability_Poisons",
-      tip = "Temporary weapon enchants on your main and off hand: rogue poisons (time and charges), shaman imbues, sharpening stones, weightstones and oils. This replaces PoisonWatch: while PoisonWatch is enabled, BuffWatch leaves weapons to it.",
+      tip = "Temporary weapon enchants on your main and off hand: rogue poisons (time and charges), shaman imbues, sharpening stones, weightstones and oils. This replaces PoisonWatch: while PoisonWatch is enabled, Buff Sentinel leaves weapons to it.",
       names = {} },
 }
 

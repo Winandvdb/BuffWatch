@@ -1,11 +1,11 @@
-# Pushing a version tag (v1.3.0) builds BuffWatch-v1.3.0.zip and uploads it to
+# Pushing a version tag (v1.3.0) builds BuffSentinel-v1.3.0.zip and uploads it to
 # CurseForge and to a GitHub release.
 #
 # Needs, in the repo's Settings > Secrets and variables > Actions:
 #   secret   CF_API_KEY       - a CurseForge API token (authors.curseforge.com > API tokens)
 #   variable CF_GAME_VERSION  - optional: the CurseForge game version(s) to upload for, e.g. 1.15.8.
 #                               Without it, the versions are read from the TOC's ## Interface line.
-# The CurseForge project is the ## X-Curse-Project-ID line in BuffWatch.toc.
+# The CurseForge project is the ## X-Curse-Project-ID line in BuffSentinel.toc.
 name: Release
 
 on:

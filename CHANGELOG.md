@@ -1,6 +1,7 @@
-# BuffWatch
+# Buff Sentinel
 
 ## 1.3.0
+- Renamed from BuffWatch to Buff Sentinel (folder `BuffSentinel`, command `/bsent`).
 - Click a bar to fix it (out of combat): casts your own buff on you (armors, Inner Fire, Aspects, tracking,
   your class's blessing or Fortitude), uses the sleeping bag or Elemental Attractor / Arcane Censer, equips the
   Argent Dawn Commission, or puts the poison or oil that was on a weapon back on. Hover a bar to see what a click

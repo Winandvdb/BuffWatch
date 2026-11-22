@@ -1,4 +1,4 @@
-# BuffWatch
+# Buff Sentinel
 
 Buff tracker for **WoW Forever** (interface 16001). Warns before your buffs run out and shows a bar for every buff
 that is missing or running low, in the game's own modern HUD style.
@@ -21,7 +21,7 @@ After you die, one warning lists everything you lost: "Lost on death: Find Miner
 
 During a fight, "running out" and "worn off" warnings wait and buff bars are hidden (weapon enchant bars stay); when
 combat ends you get one warning with what still matters ("After combat: Well Fed has worn off, Blessing of Might: 1:30 left"). WoW Forever hides your buffs from
-addons in combat: BuffWatch keeps what it saw before the fight and never reports a buff missing that it can't see.
+addons in combat: Buff Sentinel keeps what it saw before the fight and never reports a buff missing that it can't see.
 
 **Click a bar to fix it** (out of combat), when it's clear what to do: your own buffs are cast on you (armors,
 Inner Fire, Aspects, tracking, your class's blessing or Fortitude), the sleeping bag and Elemental Attractor /
@@ -29,24 +29,24 @@ Arcane Censer are used, the Argent Dawn Commission is equipped, and the poison o
 back on (if it's in your bags). Hover a bar to see what a click does. Food, flasks and elixirs aren't clickable.
 
 ## Install
-Copy the `BuffWatch` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.
-Rogues: disable PoisonWatch, BuffWatch leaves poisons to it while it's enabled.
+Copy the `BuffSentinel` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.
+Rogues: disable PoisonWatch, Buff Sentinel leaves poisons to it while it's enabled.
 
 ## Settings
-Esc > Options > AddOns > BuffWatch. The **Buff list** page sets, per buff group, when it's tracked (while leveling,
-dungeons & raids, outside them, always ...) and which buffs count. Move the bars in Edit Mode or with `/bwatch unlock`.
+Esc > Options > AddOns > Buff Sentinel. The **Buff list** page sets, per buff group, when it's tracked (while leveling,
+dungeons & raids, outside them, always ...) and which buffs count. Move the bars in Edit Mode or with `/bsent unlock`.
 
 ## Commands
 | Command | |
 |---|---|
-| `/bwatch` | help and options |
-| `/bwatch test` | preview the bars |
-| `/bwatch status` | what is tracked here and now |
-| `/bwatch auras` | your buffs with spell IDs (out of combat) |
-| `/bwatch add <group> <name or ID>` / `remove` | count another buff for a group |
-| `/bwatch here <group>` | only track a group in the dungeon you're in (again to undo) |
-| `/bwatch castlog` | for 2 minutes, print casts, buffs, resting and the sleeping bag (debugging the sleep timer) |
-| `/bwatch lock` / `unlock` / `reset` | frame and settings |
+| `/bsent` | help and options |
+| `/bsent test` | preview the bars |
+| `/bsent status` | what is tracked here and now |
+| `/bsent auras` | your buffs with spell IDs (out of combat) |
+| `/bsent add <group> <name or ID>` / `remove` | count another buff for a group |
+| `/bsent here <group>` | only track a group in the dungeon you're in (again to undo) |
+| `/bsent castlog` | for 2 minutes, print casts, buffs, resting and the sleeping bag (debugging the sleep timer) |
+| `/bsent lock` / `unlock` / `reset` | frame and settings |
 
 ## Adding buffs
 Everything lives in one table in `Data.lua` (`ns.CATEGORIES`): a buff group is a list of buff names (or spell IDs)

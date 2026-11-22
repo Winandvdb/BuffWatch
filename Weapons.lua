@@ -1,4 +1,4 @@
--- BuffWatch: temporary weapon enchants (rogue poisons, stones, oils) per hand.
+-- Buff Sentinel: temporary weapon enchants (rogue poisons, stones, oils) per hand.
 -- Ported from PoisonWatch: the precise time comes from the API, the name and
 -- charges from each weapon's own tooltip (the only per-weapon source for them).
 local _, ns = ...
@@ -15,7 +15,7 @@ W.SLOTS = {
 ---------------------------------------------------------------------------
 -- Tooltip reading
 ---------------------------------------------------------------------------
-local scanTip = CreateFrame("GameTooltip", "BuffWatchScanTip", nil, "GameTooltipTemplate")
+local scanTip = CreateFrame("GameTooltip", "BuffSentinelScanTip", nil, "GameTooltipTemplate")
 scanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
 
 function W.GetTooltipLines(invSlot)
@@ -36,7 +36,7 @@ function W.GetTooltipLines(invSlot)
     local ok = pcall(scanTip.SetInventoryItem, scanTip, "player", invSlot)
     if ok then
         for i = 1, scanTip:NumLines() do
-            local fs = _G["BuffWatchScanTipTextLeft" .. i]
+            local fs = _G["BuffSentinelScanTipTextLeft" .. i]
             local text = fs and fs:GetText()
             if Readable(text) then lines[#lines + 1] = text end
         end
@@ -184,7 +184,7 @@ function W.HasWeapon(invSlot)
     return true
 end
 
--- /bwatch weapons: what the game reports for each hand
+-- /bsent weapons: what the game reports for each hand
 function W.Debug()
     for _, info in ipairs(W.SLOTS) do
         local has, ms, ch = W.ReadSlotAPI(info)

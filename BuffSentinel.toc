@@ -1,12 +1,12 @@
 ## Interface: 16001, 11509
-## Title: BuffWatch
+## Title: Buff Sentinel
 ## Notes: Warns when your sleeping bag, food, flask, elixir, raid buffs or weapon poisons are about to run out or missing. Leveling buffs stop at max level; dungeon and raid buffs take over.
 ## Author: winan
 ## Version: 1.3.0
 ## X-License: MIT
 ## IconTexture: Interface\Icons\Spell_Misc_Food
-## SavedVariables: BuffWatchGlobal
-## SavedVariablesPerCharacter: BuffWatchDB
+## SavedVariables: BuffSentinelGlobal
+## SavedVariablesPerCharacter: BuffSentinelDB
 
 Data.lua
 Weapons.lua

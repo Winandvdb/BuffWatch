@@ -1,11 +1,11 @@
--- BuffWatch core: reads your buffs, decides what matters right now (leveling,
+-- Buff Sentinel core: reads your buffs, decides what matters right now (leveling,
 -- dungeon, raid), warns before things run out and shows a bar per buff that
 -- is missing or low. Also times your sleep in the Cozy Sleeping Bag.
 local _, ns = ...
 local Readable, Num, Print, FormatTime = ns.Readable, ns.Num, ns.Print, ns.FormatTime
 local W = ns.Weapons
 
-local BW = CreateFrame("Frame", "BuffWatchFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+local BW = CreateFrame("Frame", "BuffSentinelFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
 ns.frame = BW
 
 ns.DEFAULTS = {
@@ -29,8 +29,8 @@ ns.DEFAULTS = {
 }
 -- "mode_<key>" defaults are added per class at login
 
-local db            -- this character's settings (BuffWatchDB)
-local g             -- shared by all characters (BuffWatchGlobal): added names/IDs, learned IDs, sleep timings
+local db            -- this character's settings (BuffSentinelDB)
+local g             -- shared by all characters (BuffSentinelGlobal): added names/IDs, learned IDs, sleep timings
 local playerClass
 local state = {}    -- group key -> { has, expires, permanent, maxTime, icon, name, stacks, had, lastRem, warnedLow }
 local wstate = { mh = {}, oh = {} }
@@ -166,7 +166,7 @@ end
 local function CatOn(cat, ctx)
     if not tracked[cat.key] then return false end
     if cat.weapon and ns.weaponOff then return false end
-    -- limited to certain instances (the instances field, plus /bwatch here)
+    -- limited to certain instances (the instances field, plus /bsent here)
     -- and/or outdoor zones (the zones field)? Any match counts.
     local fixed, mine, zones = cat.instances, g.instances[cat.key], cat.zones
     if (fixed and #fixed > 0) or (mine and next(mine)) or (zones and #zones > 0) then
@@ -586,7 +586,7 @@ local function ScanAuras(now)
                         found[cat.key] = { rem = rem, exp = exp, dur = dur, name = n,
                                            icon = Readable(a.icon) and a.icon or nil, stacks = Num(a.applications) }
                         ns.byNameOnly = ns.byNameOnly or {}
-                        ns.byNameOnly[n] = true -- (for /bwatch status: buffs the list walk missed)
+                        ns.byNameOnly[n] = true -- (for /bsent status: buffs the list walk missed)
                         break
                     end
                 end
@@ -599,7 +599,7 @@ local function ScanAuras(now)
         g.extra.sleep[name] = true
         bagSnapshot = nil
         ns.RebuildTracked()
-        Print(string.format("learned the sleeping bag buff: |cffffff00%s|r. (Wrong? /bwatch remove sleep %s)", name, name))
+        Print(string.format("learned the sleeping bag buff: |cffffff00%s|r. (Wrong? /bsent remove sleep %s)", name, name))
     end
     if found.sleep then bagSnapshot = nil end
     return found, complete
@@ -1232,8 +1232,8 @@ local function BuildUI()
     BW:SetScript("OnEnter", function(self)
         if db.locked then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("BuffWatch")
-        GameTooltip:AddLine("Drag to move (or use Edit Mode). /bwatch lock to lock.", 1, 1, 1)
+        GameTooltip:AddLine("Buff Sentinel")
+        GameTooltip:AddLine("Drag to move (or use Edit Mode). /bsent lock to lock.", 1, 1, 1)
         GameTooltip:Show()
     end)
     BW:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1392,7 +1392,7 @@ end
 
 local function ActionButtonTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:AddLine(self.tipTitle or "BuffWatch")
+    GameTooltip:AddLine(self.tipTitle or "Buff Sentinel")
     GameTooltip:AddLine(self.tipText or "", 1, 1, 1)
     GameTooltip:Show()
 end
@@ -1400,7 +1400,7 @@ end
 local function GetActionButton(i)
     local b = actionButtons[i]
     if b then return b end
-    b = CreateFrame("Button", "BuffWatchAction" .. i, UIParent, "SecureActionButtonTemplate")
+    b = CreateFrame("Button", "BuffSentinelAction" .. i, UIParent, "SecureActionButtonTemplate")
     -- (both: the template acts on the one matching the "cast on key down" setting)
     b:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
@@ -1633,7 +1633,7 @@ local function UpdateUnsafe()
     end
     if preview and #entries == 0 then
         -- unlocked with nothing tracked here: still something to grab and move
-        entries[1] = { kind = "sleeping", label = "BuffWatch: nothing to track here",
+        entries[1] = { kind = "sleeping", label = "Buff Sentinel: nothing to track here",
                        icon = "Interface\\Icons\\Spell_Misc_Food", timeText = "", progress = 0, sort = 0 }
     end
     local flash = (math.floor(now * 2) % 2) == 0
@@ -1671,7 +1671,7 @@ function ns.Update()
     local ok, err = pcall(UpdateUnsafe)
     if not ok and err ~= lastError then
         lastError = err
-        Print("|cffff5555error:|r " .. tostring(err) .. " - /bwatch status helps when reporting this.")
+        Print("|cffff5555error:|r " .. tostring(err) .. " - /bsent status helps when reporting this.")
     end
 end
 
@@ -1786,20 +1786,20 @@ function ns.WeaponsDebug() W.Debug() end
 -- Events
 ---------------------------------------------------------------------------
 local function InitDB()
-    local isNew = type(BuffWatchDB) ~= "table" -- (a new character starts on today's defaults)
-    BuffWatchDB = isNew and {} or BuffWatchDB
+    local isNew = type(BuffSentinelDB) ~= "table" -- (a new character starts on today's defaults)
+    BuffSentinelDB = isNew and {} or BuffSentinelDB
     for _, cat in ipairs(ns.CATEGORIES) do
         ns.DEFAULTS["mode_" .. cat.key] = ns.DefaultMode(cat, playerClass)
     end
     for k, v in pairs(ns.DEFAULTS) do
-        if BuffWatchDB[k] == nil then
-            BuffWatchDB[k] = (type(v) == "table") and { unpack(v) } or v
+        if BuffSentinelDB[k] == nil then
+            BuffSentinelDB[k] = (type(v) == "table") and { unpack(v) } or v
         end
     end
-    db = BuffWatchDB
+    db = BuffSentinelDB
     ns.db = db
-    BuffWatchGlobal = type(BuffWatchGlobal) == "table" and BuffWatchGlobal or {}
-    g = BuffWatchGlobal
+    BuffSentinelGlobal = type(BuffSentinelGlobal) == "table" and BuffSentinelGlobal or {}
+    g = BuffSentinelGlobal
     ns.g = g
     g.extra = type(g.extra) == "table" and g.extra or {}
     g.learned = type(g.learned) == "table" and g.learned or {}
@@ -1841,7 +1841,7 @@ function ns.ResetSettings()
     ns.RebuildTracked()
 end
 
--- /bwatch here <group>: limit a group to the current dungeon/raid, or undo that.
+-- /bsent here <group>: limit a group to the current dungeon/raid, or undo that.
 -- Returns "added" / "removed" / nil (not in an instance), and the instance name.
 function ns.ToggleHere(key)
     local ok, name, _, _, _, _, _, _, id = pcall(GetInstanceInfo)
@@ -1877,7 +1877,7 @@ local function OnEvent(self, event, arg1, arg2, arg3)
         -- PoisonWatch only runs for rogues: only then leave weapons to it
         if playerClass == "ROGUE" and isLoaded and isLoaded("PoisonWatch") then
             ns.weaponOff = true
-            Print("PoisonWatch is enabled too, so BuffWatch leaves your poisons to it. Disable PoisonWatch in the AddOns list to use BuffWatch's poison bars instead.")
+            Print("PoisonWatch is enabled too, so Buff Sentinel leaves your poisons to it. Disable PoisonWatch in the AddOns list to use Buff Sentinel's poison bars instead.")
         end
         LoadBagSpell()
         ns.RebuildTracked()
@@ -1978,7 +1978,7 @@ local function OnEvent(self, event, arg1, arg2, arg3)
 end
 
 ---------------------------------------------------------------------------
--- /bwatch castlog: for 2 minutes, print what happens around the sleeping bag
+-- /bsent castlog: for 2 minutes, print what happens around the sleeping bag
 -- (your casts, buffs gained/lost with stacks, resting, the bag's cooldown,
 -- moving), to find the moment you actually lie down in it.
 ---------------------------------------------------------------------------
@@ -2049,7 +2049,7 @@ logFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
             Log("stopped moving")
         end
     end)
-    if not ok then print("BuffWatch castlog error: " .. tostring(err)) end
+    if not ok then print("Buff Sentinel castlog error: " .. tostring(err)) end
 end)
 
 -- Toggles the log; returns true when it started.

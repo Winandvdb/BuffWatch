@@ -1,8 +1,8 @@
--- BuffWatch: move the bars from Blizzard's Edit Mode.
+-- Buff Sentinel: move the bars from Blizzard's Edit Mode.
 --
 -- Same approach as SealTwister and HealKit: while Edit Mode is open, the bars
 -- show a preview with Blizzard's own selection-box art over them, and dragging
--- that box moves them. Nothing here writes into Edit Mode (BuffWatch is not one
+-- that box moves them. Nothing here writes into Edit Mode (Buff Sentinel is not one
 -- of its systems and is not saved in its layouts), because writing into it
 -- taints Blizzard's layout saving. Only hooks and our own frames.
 local _, ns = ...
@@ -13,7 +13,7 @@ local HIGHLIGHT, SELECTED = "editmode-actionbar-highlight-nineslice", "editmode-
 local function HasAtlas(name)
     return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
-if not HasAtlas(HIGHLIGHT .. "-corner") then return end -- no Edit Mode art: /bwatch unlock still works
+if not HasAtlas(HIGHLIGHT .. "-corner") then return end -- no Edit Mode art: /bsent unlock still works
 local HAS_SELECTED = HasAtlas(SELECTED .. "-corner")
 
 local function Corner(tex, atlas, flipX, flipY)
@@ -86,7 +86,7 @@ local function CreateBox()
     local label = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     label:SetPoint("CENTER")
     label:SetWordWrap(false)
-    label:SetText("BuffWatch")
+    label:SetText("Buff Sentinel")
     label:Hide()
 
     local function Lit(on)
@@ -94,7 +94,7 @@ local function CreateBox()
         label:SetShown(on)
         if on then
             GameTooltip:SetOwner(box, "ANCHOR_CURSOR_RIGHT", 12, 4)
-            GameTooltip:SetText("BuffWatch", NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+            GameTooltip:SetText("Buff Sentinel", NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
             GameTooltip:AddLine("Drag to move the buff bars.", 1, 1, 1, true)
             GameTooltip:Show()
         elseif GameTooltip:IsOwned(box) then
